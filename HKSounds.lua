@@ -3,9 +3,9 @@
 -- =========================================
 
 -- ========= CONFIG =========
+local addonName, addon = ...
+local dbName = addonName.. 'DB'
 local KILL_RESET_TIME = 5 -- seconds
-local SOUNDS_FOLDER_PATH = "Interface\\AddOns\\HKSounds\\sounds\\%s.ogg"
-local SOUND_CHANNEL = "Master"
 local SOUND_DELAY = 2
 
 local TRACKED_EVENTS = {
@@ -14,11 +14,14 @@ local TRACKED_EVENTS = {
     PLAYER_DEAD = "PLAYER_DEAD"
 }
 
-local BASE_SOUNDS = {
+-- ========= SHARED DATA =========
+addon.SOUND_CHANNEL = "Master"
+
+addon.BASE_SOUNDS = {
     START_GAME = "startgame",
 }
 
-local streakSounds = {
+addon.streakSounds = {
     [1] = "firstblood",
     [2] = "killingspree",
     [3] = "rampage",
@@ -31,7 +34,7 @@ local streakSounds = {
     [10] = "holysht",
 }
 
-local multiKillSoundName = 'multikill'
+addon.multiKillSoundName = 'multikill'
 
 -- ========= STATE =========
 local totalKillsCount = 0;
@@ -89,6 +92,7 @@ end
 -- When the GUID is secret and we're in a PvP instance, we assume
 -- the target is a player (human), since PARTY_KILL only fires for players.
 local function isTargetPlayer(targetGUID)
+
     -- Secret GUIDs cannot be inspected
     if isGUIDSecret(targetGUID) then
         return isInPvPInstance()
@@ -101,6 +105,8 @@ end
 
 
 local function getSoundPath(soundName)
+    local selectedSoundPack = _G[dbName].Options['selectedSoundPack']
+    local SOUNDS_FOLDER_PATH = "Interface\\AddOns\\".. addonName.. "\\sounds\\".. selectedSoundPack .. "\\%s.ogg"
     return string.format(SOUNDS_FOLDER_PATH, soundName)
 end
 
@@ -126,8 +132,8 @@ end
 
 -- ========= SOUND LOOKUP =========
 local function getStreakSound(count)
-	local maxIndex = #streakSounds
-    return streakSounds[math.min(maxIndex, count)]
+	local maxIndex = #addon.streakSounds
+    return addon.streakSounds[math.min(maxIndex, count)]
 end
 
 -- ========= SOUND SCHEDULING =========
@@ -147,8 +153,8 @@ local function playKillSounds(multiKillCount, killStreakCount)
     local streakSound = getStreakSound(killStreakCount)
 
     -- play multi-kill immediately
-    if multiKillCount > 1 and multiKillSoundName then
-        PlaySoundFile(getSoundPath(multiKillSoundName), SOUND_CHANNEL)
+    if multiKillCount > 1 and addon.multiKillSoundName then
+        PlaySoundFile(getSoundPath(addon.multiKillSoundName), addon.SOUND_CHANNEL)
     end
 
     if not streakSound then return end
@@ -157,7 +163,7 @@ local function playKillSounds(multiKillCount, killStreakCount)
     if multiKillCount > 1 then
         scheduleStreakSound(streakSound)
     else
-        PlaySoundFile(getSoundPath(streakSound), SOUND_CHANNEL)
+        PlaySoundFile(getSoundPath(streakSound), addon.SOUND_CHANNEL)
     end
 
 end
@@ -190,7 +196,7 @@ end
 
 local function handleZoneChanged()
     if isInPvPInstance() then
-        PlaySoundFile(getSoundPath(BASE_SOUNDS.START_GAME), SOUND_CHANNEL)
+        PlaySoundFile(getSoundPath(addon.START_GAME), addon.SOUND_CHANNEL)
     end
     resetKillStreak()
 end

@@ -2,8 +2,14 @@
 ## Title: |cffff0000HK|r Sounds
 ## Notes: Unreal-style PvP kill announcements
 ## Author: Dream
-## Version: 1.0.0
+## Version: 2.0.0
 ## Category: PvP
 ## IconTexture: Interface\AddOns\HKSounds\HKSounds.blp
+## SavedVariables: HKSoundsDB
+## LoadSavedVariablesFirst: true
+## AddonCompartmentFunc:openOptionsPanel
+## X-Curse-Project-ID: 1453767
+
 
 HKSounds.lua
+HKSoundsOptions.lua
