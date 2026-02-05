@@ -12,7 +12,7 @@
 - Killing Sprees
 - Multi-Kills
 
-🎵 All of HK Sounds’ audio files are stored inside the `hk-sounds/sounds/` folder. This is where the addon looks for announcer sounds, and you can safely replace the `.ogg` files with your own custom sounds as long as you keep the original filenames intact.
+🎵 All of HK Sounds’ audio files are stored inside the `hksounds/sounds/` folder. This is where the addon looks for announcer sounds, and you can safely replace the `.ogg` files with your own custom sounds as long as you keep the original filenames intact.
 
 🎛 **Customizable Sound Packs**
 
