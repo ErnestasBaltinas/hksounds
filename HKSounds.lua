@@ -105,6 +105,9 @@ end
 
 
 local function getSoundPath(soundName)
+    if soundName == nil then 
+        return 
+    end
     local selectedSoundPack = _G[dbName].Options['selectedSoundPack']
     local SOUNDS_FOLDER_PATH = "Interface\\AddOns\\".. addonName.. "\\sounds\\".. selectedSoundPack .. "\\%s.ogg"
     return string.format(SOUNDS_FOLDER_PATH, soundName)
@@ -196,7 +199,7 @@ end
 
 local function handleZoneChanged()
     if isInPvPInstance() then
-        PlaySoundFile(getSoundPath(addon.START_GAME), addon.SOUND_CHANNEL)
+        PlaySoundFile(getSoundPath(addon.BASE_SOUNDS.START_GAME), addon.SOUND_CHANNEL)
     end
     resetKillStreak()
 end
