@@ -2,9 +2,12 @@
 -- HKSounds - UT-style PvP Kill Announcer
 -- =========================================
 
--- ========= CONFIG =========
+-- imports
 local addonName, addon = ...
-local dbName = addonName.. 'DB'
+local SoundSystem = addon.SoundSystem
+local DBUtils = addon.DBUtils
+
+-- ========= CONFIG =========
 local KILL_RESET_TIME = 5 -- seconds
 local SOUND_DELAY = 2
 
@@ -13,28 +16,6 @@ local TRACKED_EVENTS = {
     ZONE_CHANGED_NEW_AREA = "ZONE_CHANGED_NEW_AREA",
     PLAYER_DEAD = "PLAYER_DEAD"
 }
-
--- ========= SHARED DATA =========
-addon.SOUND_CHANNEL = "Master"
-
-addon.BASE_SOUNDS = {
-    START_GAME = "startgame",
-}
-
-addon.streakSounds = {
-    [1] = "firstblood",
-    [2] = "killingspree",
-    [3] = "rampage",
-    [4] = "dominating",
-    [5] = "ultrakill",
-    [6] = "unstoppable",
-    [7] = "wickedsick",
-    [8] = "monsterkill",
-    [9] = "godlike",
-    [10] = "holysht",
-}
-
-addon.multiKillSoundName = 'multikill'
 
 -- ========= STATE =========
 local totalKillsCount = 0;
@@ -65,7 +46,6 @@ end
 local function isGUIDSecret(guid)
 	return issecretvalue(guid)
 end
-
 
 -- HACKY WORKAROUND:
 -- In any instances (arenas/BGs), Blizzard hides attacker GUIDs as <secret>.
@@ -102,23 +82,6 @@ local function isTargetPlayer(targetGUID)
     return type(targetGUID) == "string" and targetGUID:match("^Player%-") ~= nil
 end
 
-
-
-local function getSoundPath(soundName)
-    if soundName == nil then 
-        return 
-    end
-    local selectedSoundPack = _G[dbName].Options['selectedSoundPack']
-    local SOUNDS_FOLDER_PATH = "Interface\\AddOns\\".. addonName.. "\\sounds\\".. selectedSoundPack .. "\\%s.ogg"
-    return string.format(SOUNDS_FOLDER_PATH, soundName)
-end
-
-local function resetKillStreak()
-    killStreak = 0
-    multiKill = 0
-    killTime = 0
-end
-
 -- ========= KILL COUNTERS =========
 local function updateKillCounters(now)
     if killTime + KILL_RESET_TIME > now then
@@ -133,10 +96,15 @@ local function updateKillCounters(now)
     return multiKill, killStreak
 end
 
+local function resetKillStreak()
+    killStreak = 0
+    multiKill = 0
+    killTime = 0
+end
 -- ========= SOUND LOOKUP =========
 local function getStreakSound(count)
-	local maxIndex = #addon.streakSounds
-    return addon.streakSounds[math.min(maxIndex, count)]
+	local maxIndex = #SoundSystem.STREAK_SOUNDS
+    return SoundSystem.STREAK_SOUNDS[math.min(maxIndex, count)]
 end
 
 -- ========= SOUND SCHEDULING =========
@@ -146,7 +114,7 @@ local function scheduleStreakSound(soundName)
     end
 
     streakTimer = C_Timer.NewTimer(SOUND_DELAY, function()
-        PlaySoundFile(getSoundPath(soundName)) -- default sound channel
+        SoundSystem.play(soundName, false) -- default sound channel
         streakTimer = nil
     end)
 end
@@ -156,8 +124,8 @@ local function playKillSounds(multiKillCount, killStreakCount)
     local streakSound = getStreakSound(killStreakCount)
 
     -- play multi-kill immediately
-    if multiKillCount > 1 and addon.multiKillSoundName then
-        PlaySoundFile(getSoundPath(addon.multiKillSoundName), addon.SOUND_CHANNEL)
+    if multiKillCount > 1 and SoundSystem.MULTI_KILL_SOUND_NAME then
+        SoundSystem.play(SoundSystem.MULTI_KILL_SOUND_NAME, true)
     end
 
     if not streakSound then return end
@@ -166,7 +134,7 @@ local function playKillSounds(multiKillCount, killStreakCount)
     if multiKillCount > 1 then
         scheduleStreakSound(streakSound)
     else
-        PlaySoundFile(getSoundPath(streakSound), addon.SOUND_CHANNEL)
+        SoundSystem.play(streakSound, true)
     end
 
 end
@@ -180,17 +148,23 @@ local function handlePartyKill(attackerGUID, targetGUID)
     if not killedByPlayer then 
         return 
     end
-
     
     if not isTargetHuman then 
         return 
     end
 
+    local soundMode = DBUtils.getOptionValue('selectedSoundMode');
+    if soundMode == SoundSystem.SOUND_MODE.SINGLE_SOUND then
+        local selectedSingleSound = DBUtils.getOptionValue('selectedSingleSound');
+        SoundSystem.play(selectedSingleSound, true)
+    elseif soundMode == SoundSystem.SOUND_MODE.SOUND_PACK then
+        local now = GetTime()
+        local mk, ks = updateKillCounters(now)
 
-    local now = GetTime()
-    local mk, ks = updateKillCounters(now)
+        playKillSounds(mk, ks)
+    end
 
-    playKillSounds(mk, ks)
+
 end
 
 local function handlePlayerDead()
@@ -199,7 +173,11 @@ end
 
 local function handleZoneChanged()
     if isInPvPInstance() then
-        PlaySoundFile(getSoundPath(addon.BASE_SOUNDS.START_GAME), addon.SOUND_CHANNEL)
+
+        local soundMode = DBUtils.getOptionValue('selectedSoundMode');
+        if soundMode == SoundSystem.SOUND_MODE.SOUND_PACK then
+            SoundSystem.play(SoundSystem.BASE_SOUNDS.START_GAME, true)
+        end
     end
     resetKillStreak()
 end
