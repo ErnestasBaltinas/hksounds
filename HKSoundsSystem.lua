@@ -37,6 +37,7 @@ SoundSystem.MULTI_KILL_SOUND_NAME = 'multikill'
 SoundSystem.AVAILABLE_SOUND_PACKS = {
     { "UT Classic (Female)", 'ut_classic_female' },
     { "UT Classic (Male)", 'ut_classic_male' },
+    { "GLaDOS (Portal)", 'glados' },
 } -- sound_pack_name, string_id -- folder needs to be the same as the string_id
 
 SoundSystem.AVAILABLE_SINGLE_SOUNDS = {
@@ -47,6 +48,7 @@ SoundSystem.AVAILABLE_SINGLE_SOUNDS = {
     { "We got him", 'wegothim' },
     { "Bonk", 'bonk' },
     { "Arrow Impact", 'arrowimpact' },
+    { "Wilhelm Scream", 'wilhelmscream' },
 } -- sound name, string_id -- folder needs to be the same as the string_id
 
 local function buildSoundPath(folder, soundName)
