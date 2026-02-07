@@ -7,7 +7,8 @@ local DBUtils = addon.DBUtils
 local defaultOptions = {
     selectedSoundMode = 'sound_pack',
     selectedSoundPack = 'ut_classic_female',
-    selectedSingleSound = 'gunshot'
+    -- selectedSingleSound =  'bonk', -- deprecated, replaced by selectedSingleSounds
+    selectedSingleSounds =  { ["gunshot"] = true } 
 }
 
 function DBUtils.getOptionValue(id)
@@ -16,6 +17,22 @@ end
 
 function DBUtils.setOptionValue(id, value)
 	_G[dbName].Options[id] = value
+end
+
+function DBUtils.getSelectedOptionsArray(optionId)
+    local selected = DBUtils.getOptionValue(optionId) or {}
+
+    if type(selected) ~= "table" then
+        return nil
+    end
+
+    local arr = {}
+
+    for key in pairs(selected) do
+        table.insert(arr, key)
+    end
+
+    return arr
 end
 
 local function applyDefaults(target, defaults)
@@ -30,9 +47,22 @@ local function applyDefaults(target, defaults)
     end
 end
 
+local function migrateOptions()
+    -- deprecated option, convert single string to a lookup table
+    if _G[dbName].Options.selectedSingleSound then
+        _G[dbName].Options.selectedSingleSounds = {
+            [_G[dbName].Options.selectedSingleSound] = true
+        }
+    end
+    -- cleanup old variable
+    _G[dbName].Options.selectedSingleSound = nil
+end
+
 function DBUtils.initSavedVars()
     _G[dbName] = _G[dbName] or {}
     _G[dbName].Options = _G[dbName].Options or CopyTable(defaultOptions)
 
     applyDefaults(_G[dbName].Options, defaultOptions)
+
+    migrateOptions()
 end

@@ -49,7 +49,12 @@ SoundSystem.AVAILABLE_SINGLE_SOUNDS = {
     { "Bonk", 'bonk' },
     { "Arrow Impact", 'arrowimpact' },
     { "Wilhelm Scream", 'wilhelmscream' },
+    { "Boom Headshot", 'boomheadshot' },
+    { "Goat Scream", 'goatscream' },
 } -- sound name, string_id -- folder needs to be the same as the string_id
+
+-- temp state
+local currentSoundPackPreviewIndex = 1
 
 local function buildSoundPath(folder, soundName)
     return string.format(
@@ -103,4 +108,32 @@ function SoundSystem.soundExists(soundName)
         return false -- instead of nil, return false
     end
     return exists 
+end
+
+function SoundSystem.playRandomSingleSound()
+    local selected = DBUtils.getOptionValue("selectedSingleSounds") or {}
+    local selectedSoundsArray = DBUtils.getSelectedOptionsArray("selectedSingleSounds")
+
+    if #selectedSoundsArray == 0 then return end  -- nothing selected
+
+    local soundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
+    SoundSystem.play(soundName)    -- uses your existing play function
+end
+
+local function getNextStreakSound()
+    local nextSound = SoundSystem.STREAK_SOUNDS[currentSoundPackPreviewIndex]
+    if not nextSound then
+        nextSound = SoundSystem.STREAK_SOUNDS[1] -- fallback
+    end
+    return nextSound
+end
+
+function SoundSystem.playPreviewStreakSound()
+    SoundSystem.play(getNextStreakSound(), true)
+    -- increment index
+    if currentSoundPackPreviewIndex >= #SoundSystem.STREAK_SOUNDS then
+        currentSoundPackPreviewIndex = 1
+    else
+        currentSoundPackPreviewIndex = currentSoundPackPreviewIndex + 1
+    end
 end

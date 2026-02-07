@@ -150,13 +150,12 @@ local function handlePartyKill(attackerGUID, targetGUID)
     end
     
     if not isTargetHuman then 
-        return 
+        return
     end
 
     local soundMode = DBUtils.getOptionValue('selectedSoundMode');
     if soundMode == SoundSystem.SOUND_MODE.SINGLE_SOUND then
-        local selectedSingleSound = DBUtils.getOptionValue('selectedSingleSound');
-        SoundSystem.play(selectedSingleSound, true)
+        SoundSystem.playRandomSingleSound()
     elseif soundMode == SoundSystem.SOUND_MODE.SOUND_PACK then
         local now = GetTime()
         local mk, ks = updateKillCounters(now)

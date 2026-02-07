@@ -14,7 +14,6 @@ local OPTIONS_TRACKED_EVENTS = {
 local xOffset = 7; -- for elements inside the options frame
 
 -- ========= STATE =========
-local currentPreviewSoundIndex = 1
 local addonCategoryId = nil -- mainly used to open options page using slash command
 
 -- ========= HELPERS =========
@@ -44,34 +43,6 @@ local function setGroupEnabled(group, enabled)
     for _, child in ipairs({group:GetChildren()}) do
         setUIEnabled(child, enabled)
     end
-end
-
--- ========= SOUND PREVIEW =========
-local function getNextSound()
-    local nextSound = SoundSystem.STREAK_SOUNDS[currentPreviewSoundIndex]
-
-    if nextSound == nil then
-        nextSound = 'firstblood' -- fallback value
-    end
-
-    return nextSound
-end
-
-local function playPreviewSounds()
-    SoundSystem.play(getNextSound(), true)
-
-    -- handle next sound by updating currentPreviewSoundIndex
-    if currentPreviewSoundIndex >= #SoundSystem.STREAK_SOUNDS then
-        currentPreviewSoundIndex = 1
-    else
-        currentPreviewSoundIndex = currentPreviewSoundIndex + 1
-    end
-
-end
-
-local function playPreviewSingleSound()
-    local selectedSoundName = DBUtils.getOptionValue('selectedSingleSound')
-    SoundSystem.play(selectedSoundName, true)
 end
  
 -- ========= FRAME / EVENTS =========
@@ -153,7 +124,7 @@ local function initOptionsFrame()
     previewButton:SetPoint("LEFT", soundPackDropdown, "RIGHT", 5, 0)
     previewButton:SetText("Play Sample")
     previewButton:SetScript("OnClick", function()
-        playPreviewSounds()
+        SoundSystem.playPreviewStreakSound()
     end)
     -- initial state
     local isSoundPackSelected = DBUtils.getOptionValue('selectedSoundMode') == SoundSystem.SOUND_MODE.SOUND_PACK
@@ -174,11 +145,19 @@ local function initOptionsFrame()
     singleSoundDropdown:SetPoint("TOPLEFT", 0, 0)
     singleSoundDropdown:SetWidth(200)
 
-    MenuUtil.CreateRadioMenu(singleSoundDropdown,
-        function(value) return value == DBUtils.getOptionValue('selectedSingleSound') end,
-        function(value) DBUtils.setOptionValue('selectedSingleSound', value) end,
+    MenuUtil.CreateCheckboxMenu(singleSoundDropdown,
+        function(value) return DBUtils.getOptionValue('selectedSingleSounds')[value] end,
+        function(value) 
+            local selectedSingleSounds = DBUtils.getOptionValue('selectedSingleSounds')
+            if selectedSingleSounds[value] then
+                selectedSingleSounds[value] = nil   -- remove from set
+            else
+                selectedSingleSounds[value] = true  -- add to set
+            end
+            DBUtils.setOptionValue('selectedSingleSounds', selectedSingleSounds)
+        end,
         unpack(SoundSystem.AVAILABLE_SINGLE_SOUNDS)
-    )
+    );
 
     local singleSoundDropdownLabel = singleSoundContainer:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     singleSoundDropdownLabel:SetPoint("BOTTOMLEFT", singleSoundDropdown, "TOPLEFT", 0, 2)
@@ -189,7 +168,7 @@ local function initOptionsFrame()
     singleSoundpreviewButton:SetPoint("LEFT", singleSoundDropdown, "RIGHT", 5, 0)
     singleSoundpreviewButton:SetText("Play Sample")
     singleSoundpreviewButton:SetScript("OnClick", function()
-        playPreviewSingleSound()
+        SoundSystem.playRandomSingleSound()
     end)
 
     local isSingleSoundSelected = DBUtils.getOptionValue('selectedSoundMode') == SoundSystem.SOUND_MODE.SINGLE_SOUND
@@ -223,6 +202,10 @@ end
 
 -- global function for AddonCompartmentFunc
 function openOptionsPanel()
+    -- Settings.OpenToCategory throws an error when in-combat
+    if UnitAffectingCombat("player") then
+        return print('|cffff0000HK|r Sounds: You can’t use this slash command during combat. Please try again once combat has ended.')
+    end
     Settings.OpenToCategory(addonCategoryId)
 end
 

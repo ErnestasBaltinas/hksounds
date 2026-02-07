@@ -21,9 +21,9 @@
 
 🔊 **Single Sound Mode**
 
-- If sound packs are not your thing, you can switch to **Single Sound** mode and choose one of the available sounds from the list. Once selected, the same sound will play on every killing blow.
+- If sound packs are not your thing, you can switch to **Single Sound** mode and choose one or more of the available sounds from the list. Once selected, the sounds will play randomly on every killing blow.
 - If you have ideas for new sounds you’d like to use, feel free to share them — they can be added to the list in future updates.
-- Available sounds: `arrowimpact.ogg`, `bonk.ogg`, `gunshot.ogg`, `gunshot2.ogg`, `murky.ogg`, `murloc.ogg`, `wegothim.ogg`
+- Available sounds: `arrowimpact.ogg`, `bonk.ogg`, `gunshot.ogg`, `gunshot2.ogg`, `murky.ogg`, `murloc.ogg`, `wegothim.ogg`, `wilhelmscream.ogg`, `boomheadshot.ogg`, `goatscream.ogg`
 
 ⚔️ **Works in:**
 
