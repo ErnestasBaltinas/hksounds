@@ -15,7 +15,7 @@ SoundSystem.BASE_SOUNDS = {
 }
 
 SoundSystem.AVAILABLE_SOUND_MODES = {
-    { "Sound Pack",  SoundSystem.SOUND_MODE.SOUND_PACK },
+    { "Sound Pack",   SoundSystem.SOUND_MODE.SOUND_PACK },
     { "Single Sound", SoundSystem.SOUND_MODE.SINGLE_SOUND },
 } -- sound_pack_name, string_id -- folder needs to be the same as the string_id
 
@@ -36,21 +36,22 @@ SoundSystem.MULTI_KILL_SOUND_NAME = 'multikill'
 
 SoundSystem.AVAILABLE_SOUND_PACKS = {
     { "UT Classic (Female)", 'ut_classic_female' },
-    { "UT Classic (Male)", 'ut_classic_male' },
-    { "GLaDOS (Portal)", 'glados' },
+    { "UT Classic (Male)",   'ut_classic_male' },
+    { "GLaDOS (Portal)",     'glados' },
 } -- sound_pack_name, string_id -- folder needs to be the same as the string_id
 
 SoundSystem.AVAILABLE_SINGLE_SOUNDS = {
-    { "Gunshot", 'gunshot' },
-    { "Gunshot 2", 'gunshot2' },
-    { "Murloc", 'murloc' },
+    { "Gunshot",                     'gunshot' },
+    { "Gunshot 2",                   'gunshot2' },
+    { "Gunshot 3 (CS 1.6 AWP)",      'gunshot3' },
+    { "Boom Headshot",               'boomheadshot' },
+    { "Murloc",                      'murloc' },
     { "Murky (Heroes of the Storm)", 'murky' },
-    { "We got him", 'wegothim' },
-    { "Bonk", 'bonk' },
-    { "Arrow Impact", 'arrowimpact' },
-    { "Wilhelm Scream", 'wilhelmscream' },
-    { "Boom Headshot", 'boomheadshot' },
-    { "Goat Scream", 'goatscream' },
+    { "We got him",                  'wegothim' },
+    { "Bonk",                        'bonk' },
+    { "Arrow Impact",                'arrowimpact' },
+    { "Wilhelm Scream",              'wilhelmscream' },
+    { "Goat Scream",                 'goatscream' },
 } -- sound name, string_id -- folder needs to be the same as the string_id
 
 -- temp state
@@ -89,35 +90,33 @@ function SoundSystem.play(soundName, userMasterChannel)
     if path then
         if userMasterChannel then
             PlaySoundFile(path, SOUND_CHANNEL)
-        else 
+        else
             PlaySoundFile(path)
         end
-        
     end
 end
 
 function SoundSystem.soundExists(soundName)
-
     if not soundName then return end
 
     local path = SoundSystem.getSoundPath(soundName)
 
     local exists = PlaySoundFile(path, SOUND_CHANNEL)
     if exists == nil then
-        print('HKSounds - Sound "'.. soundName ..'" does not exist.')
+        print('HKSounds - Sound "' .. soundName .. '" does not exist.')
         return false -- instead of nil, return false
     end
-    return exists 
+    return exists
 end
 
 function SoundSystem.playRandomSingleSound()
     local selected = DBUtils.getOptionValue("selectedSingleSounds") or {}
     local selectedSoundsArray = DBUtils.getSelectedOptionsArray("selectedSingleSounds")
 
-    if #selectedSoundsArray == 0 then return end  -- nothing selected
+    if #selectedSoundsArray == 0 then return end -- nothing selected
 
     local soundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
-    SoundSystem.play(soundName)    -- uses your existing play function
+    SoundSystem.play(soundName) -- uses your existing play function
 end
 
 local function getNextStreakSound()
