@@ -1,22 +1,28 @@
 local addonName, addon = ...
-local dbName = addonName.. 'DB'
+local dbName = addonName .. 'DB'
 
 addon.DBUtils = {}
 local DBUtils = addon.DBUtils
 
 local defaultOptions = {
+    soundModeEnabled = true,
     selectedSoundMode = 'sound_pack',
     selectedSoundPack = 'ut_classic_female',
     -- selectedSingleSound =  'bonk', -- deprecated, replaced by selectedSingleSounds
-    selectedSingleSounds =  { ["gunshot"] = true } 
+    selectedSingleSounds = { ["gunshot"] = true },
+    friendlyDeathModeEnabled = true,
+    selectedFriendlyDeathSounds = { ["goatscream"] = true },
+    enemyDeathModeEnabled = true,
+    selectedEnemyDeathSounds = { ["gunshot2"] = true },
+
 }
 
 function DBUtils.getOptionValue(id)
-	return _G[dbName].Options[id]
+    return _G[dbName].Options[id]
 end
 
 function DBUtils.setOptionValue(id, value)
-	_G[dbName].Options[id] = value
+    _G[dbName].Options[id] = value
 end
 
 function DBUtils.getSelectedOptionsArray(optionId)

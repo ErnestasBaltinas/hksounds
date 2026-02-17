@@ -1,8 +1,8 @@
 ## Interface: 120000
 ## Title: |cffff0000HK|r Sounds
 ## Notes: Unreal-style PvP kill announcements
-## Author: Dream
-## Version: 3.1.1
+## Author: drmlol
+## Version: 4.0.0
 ## Category: PvP
 ## IconTexture: Interface\AddOns\HKSounds\HKSounds.blp
 ## SavedVariables: HKSoundsDB

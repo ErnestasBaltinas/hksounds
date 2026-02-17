@@ -87,6 +87,7 @@ function SoundSystem.play(soundName, userMasterChannel)
     if not soundName then return end
 
     local path = SoundSystem.getSoundPath(soundName)
+    print('SoundSystem.play path to play:', path)
     if path then
         if userMasterChannel then
             PlaySoundFile(path, SOUND_CHANNEL)
@@ -109,14 +110,32 @@ function SoundSystem.soundExists(soundName)
     return exists
 end
 
+local function getRandomSingleSound(optionId)
+    local selectedSingleSounds = DBUtils.getOptionValue(optionId) or {}
+    local selectedSingleSoundsArray = DBUtils.getSelectedOptionsArray(optionId)
+
+    if #selectedSingleSoundsArray == 0 then return nil end -- nothing selected
+
+    local randomIndex = math.random(1, #selectedSingleSoundsArray)
+    return selectedSingleSoundsArray[randomIndex]
+end
+
 function SoundSystem.playRandomSingleSound()
-    local selected = DBUtils.getOptionValue("selectedSingleSounds") or {}
-    local selectedSoundsArray = DBUtils.getSelectedOptionsArray("selectedSingleSounds")
+    local soundName = getRandomSingleSound("selectedSingleSounds")
+    SoundSystem.play(soundName)
+end
 
-    if #selectedSoundsArray == 0 then return end -- nothing selected
+function SoundSystem.playRandomFriendlyDeathSound()
+    local soundName = getRandomSingleSound("selectedFriendlyDeathSounds")
+    local path = buildSoundPath("single", soundName)
+    PlaySoundFile(path, SOUND_CHANNEL)
+end
 
-    local soundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
-    SoundSystem.play(soundName) -- uses your existing play function
+function SoundSystem.playRandomEnemyDeathSound()
+    local soundName = getRandomSingleSound("selectedEnemyDeathSounds")
+    local path = buildSoundPath("single", soundName)
+    print("Playing enemy death sound:", soundName, "path:", path)
+    PlaySoundFile(path, SOUND_CHANNEL)
 end
 
 local function getNextStreakSound()
