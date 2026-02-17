@@ -172,10 +172,8 @@ local function initOptionsFrame()
         local selectedSoundsArray = DBUtils.getSelectedOptionsArray("selectedSingleSounds")
         if #selectedSoundsArray == 0 then return end -- nothing selected
 
-        local soundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
-        local soundPath = SoundSystem.buildSoundPath(SoundSystem.SINGLE_SOUND_FOLDER_NAME, soundName)
-
-        SoundSystem.play(soundPath, true)
+        local randomSoundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
+        SoundSystem.playFromFolder(SoundSystem.SINGLE_SOUND_FOLDER_NAME, randomSoundName, true)
     end)
 
     local isSingleSoundSelected = DBUtils.getOptionValue('selectedSoundMode') == SoundSystem.SOUND_MODE.SINGLE_SOUND

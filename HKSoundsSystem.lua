@@ -58,7 +58,6 @@ SoundSystem.AVAILABLE_SINGLE_SOUNDS = {
 local currentSoundPackPreviewIndex = 1
 
 function SoundSystem.buildSoundPath(folder, soundName)
-    print('folder', folder, 'sound_name', soundName)
     return string.format(
         "Interface\\AddOns\\%s\\sounds\\%s\\%s.ogg",
         addonName,
@@ -70,13 +69,17 @@ end
 function SoundSystem.play(soundPath, userMasterChannel)
     if not soundPath then return end
 
-    if soundPath then
-        if userMasterChannel then
-            PlaySoundFile(soundPath, SOUND_CHANNEL)
-        else
-            PlaySoundFile(soundPath)
-        end
+
+    if userMasterChannel then
+        PlaySoundFile(soundPath, SOUND_CHANNEL)
+    else
+        PlaySoundFile(soundPath)
     end
+end
+
+function SoundSystem.playFromFolder(folder, soundName, useMaster)
+    local path = SoundSystem.buildSoundPath(folder, soundName)
+    SoundSystem.play(path, useMaster)
 end
 
 -- old and deprecated

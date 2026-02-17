@@ -106,16 +106,13 @@ local function dispatchRandomSingleSound(useMasterChannel)
     local selectedSoundsArray = DBUtils.getSelectedOptionsArray("selectedSingleSounds")
     if #selectedSoundsArray == 0 then return end -- nothing selected
 
-    local soundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
-    local soundPath = SoundSystem.buildSoundPath(SoundSystem.SINGLE_SOUND_FOLDER_NAME, soundName)
-
-    SoundSystem.play(soundPath, useMasterChannel)
+    local randomSoundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
+    SoundSystem.playFromFolder(SoundSystem.SINGLE_SOUND_FOLDER_NAME, randomSoundName, useMasterChannel)
 end
 
 local function dispatchSoundPackSound(soundName, useMasterChannel)
     local folder = DBUtils.getOptionValue('selectedSoundPack') -- selected sound pack acts like a folder
-    local soundPath = SoundSystem.buildSoundPath(folder, soundName);
-    SoundSystem.play(soundPath, useMasterChannel)
+    SoundSystem.playFromFolder(folder, soundName, useMasterChannel)
 end
 
 local function scheduleStreakSound(soundName)
