@@ -30,7 +30,7 @@ local function getCurrentTotalKills()
     -- 1487 -- Achievement -> Statistics -> Total Killing Blows
     local _, _, _, _, _, _, _, _, killCount = GetAchievementCriteriaInfoByID(1487, 0)
 
-    return killCount
+    return tonumber(killCount)
 end
 
 local function isInPvPInstance()
@@ -126,7 +126,10 @@ local function scheduleStreakSound(soundName)
     end)
 end
 
-local function playKillSounds(multiKillCount, killStreakCount)
+local function handleMultiKills()
+    local now = GetTime()
+    local multiKillCount, killStreakCount = updateKillCounters(now)
+
     local streakSound = SoundSystem.getStreakSound(killStreakCount)
 
     -- play multi-kill immediately
@@ -144,28 +147,28 @@ local function playKillSounds(multiKillCount, killStreakCount)
     end
 end
 
--- ========= EVENT HANDLERS =========
-local function handlePartyKill(attackerGUID, targetGUID)
-    local killedByPlayer = wasKilledByPlayer(attackerGUID);
-    local isTargetHuman = isTargetPlayer(targetGUID)
-
-    if not killedByPlayer then
-        return
-    end
-
-    if not isTargetHuman then
-        return
-    end
-
+local function playKillingBlowSound()
     local soundMode = DBUtils.getOptionValue('selectedSoundMode');
     if soundMode == SoundSystem.SOUND_MODE.SINGLE_SOUND then
         dispatchRandomSingleSound(true)
     elseif soundMode == SoundSystem.SOUND_MODE.SOUND_PACK then
-        local now = GetTime()
-        local mk, ks = updateKillCounters(now)
-
-        playKillSounds(mk, ks)
+        handleMultiKills()
     end
+end
+
+-- ========= EVENT HANDLERS =========
+local function handlePartyKill(attackerGUID, targetGUID)
+    local killedByPlayer = wasKilledByPlayer(attackerGUID);
+    if not killedByPlayer then
+        return
+    end
+
+    local isTargetHuman = isTargetPlayer(targetGUID)
+    if not isTargetHuman then
+        return
+    end
+
+    playKillingBlowSound()
 end
 
 local function handlePlayerDead()
