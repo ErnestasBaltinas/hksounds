@@ -29,7 +29,7 @@ local function setUIEnabled(frame, enabled)
             frame:SetTextColor(0.5, 0.5, 0.5)
         end
 
-    -- Button, CheckButton, Dropdown, Slider, etc.
+        -- Button, CheckButton, Dropdown, Slider, etc.
     else
         if enabled then
             if frame.Enable then frame:Enable() end
@@ -40,11 +40,11 @@ local function setUIEnabled(frame, enabled)
 end
 
 local function setGroupEnabled(group, enabled)
-    for _, child in ipairs({group:GetChildren()}) do
+    for _, child in ipairs({ group:GetChildren() }) do
         setUIEnabled(child, enabled)
     end
 end
- 
+
 -- ========= FRAME / EVENTS =========
 local function initOptionsFrame()
     DBUtils.initSavedVars() -- load local db file
@@ -62,7 +62,7 @@ local function initOptionsFrame()
     header:SetTextColor(1, 1, 1, 1)
 
     -- Separator
-    local separator = optionsFrame:CreateTexture(nil,"ARTWORK")
+    local separator = optionsFrame:CreateTexture(nil, "ARTWORK")
     separator:SetAtlas("Options_HorizontalDivider", true)
     separator:SetPoint("TOP", 0, -50)
 
@@ -82,8 +82,8 @@ local function initOptionsFrame()
     -- =============================
     local soundGroup = CreateFrame("Frame", nil, optionsFrame, "BackdropTemplate")
     soundGroup:SetPoint("TOPLEFT", xOffset, -110)
-    soundGroup:SetPoint("TOPRIGHT", -xOffset, -125)  -- right side anchored
-    soundGroup:SetHeight(140)  -- keep height fixed
+    soundGroup:SetPoint("TOPRIGHT", -xOffset, -125) -- right side anchored
+    soundGroup:SetHeight(140)                       -- keep height fixed
 
     soundGroup:SetBackdrop({
         bgFile = "Interface/Tooltips/UI-Tooltip-Background",
@@ -101,8 +101,8 @@ local function initOptionsFrame()
 
     -- Create a container frame for Sound Pack controls
     local soundPackContainer = CreateFrame("Frame", nil, soundGroup)
-    soundPackContainer:SetPoint("TOPLEFT", xOffsetGroup, -35)  -- relative to soundGroup
-    soundPackContainer:SetSize(370, 30)  -- width covers dropdown + button, height enough for dropdown
+    soundPackContainer:SetPoint("TOPLEFT", xOffsetGroup, -35) -- relative to soundGroup
+    soundPackContainer:SetSize(370, 30)                       -- width covers dropdown + button, height enough for dropdown
 
 
     local soundPackDropdown = CreateFrame("DropdownButton", nil, soundPackContainer, "WowStyle1DropdownTemplate")
@@ -124,11 +124,12 @@ local function initOptionsFrame()
     previewButton:SetPoint("LEFT", soundPackDropdown, "RIGHT", 5, 0)
     previewButton:SetText("Play Sample")
     previewButton:SetScript("OnClick", function()
-        SoundSystem.playPreviewStreakSound()
+        local folder = DBUtils.getOptionValue("selectedSoundPack")
+        SoundSystem.playPreviewStreakSound(folder)
     end)
     -- initial state
     local isSoundPackSelected = DBUtils.getOptionValue('selectedSoundMode') == SoundSystem.SOUND_MODE.SOUND_PACK
-    
+
     setGroupEnabled(soundPackContainer, isSoundPackSelected)
     setUIEnabled(soundPackDropdownLabel, isSoundPackSelected)
 
@@ -138,8 +139,8 @@ local function initOptionsFrame()
 
     -- Create a container frame for Sound Pack controls
     local singleSoundContainer = CreateFrame("Frame", nil, soundGroup)
-    singleSoundContainer:SetPoint("TOPLEFT", xOffsetGroup, -85)  -- relative to soundGroup
-    singleSoundContainer:SetSize(370, 30)  -- width covers dropdown + button, height enough for dropdown
+    singleSoundContainer:SetPoint("TOPLEFT", xOffsetGroup, -85) -- relative to soundGroup
+    singleSoundContainer:SetSize(370, 30)                       -- width covers dropdown + button, height enough for dropdown
 
     local singleSoundDropdown = CreateFrame("DropdownButton", nil, singleSoundContainer, "WowStyle1DropdownTemplate")
     singleSoundDropdown:SetPoint("TOPLEFT", 0, 0)
@@ -147,12 +148,12 @@ local function initOptionsFrame()
 
     MenuUtil.CreateCheckboxMenu(singleSoundDropdown,
         function(value) return DBUtils.getOptionValue('selectedSingleSounds')[value] end,
-        function(value) 
+        function(value)
             local selectedSingleSounds = DBUtils.getOptionValue('selectedSingleSounds')
             if selectedSingleSounds[value] then
-                selectedSingleSounds[value] = nil   -- remove from set
+                selectedSingleSounds[value] = nil  -- remove from set
             else
-                selectedSingleSounds[value] = true  -- add to set
+                selectedSingleSounds[value] = true -- add to set
             end
             DBUtils.setOptionValue('selectedSingleSounds', selectedSingleSounds)
         end,
@@ -168,11 +169,17 @@ local function initOptionsFrame()
     singleSoundpreviewButton:SetPoint("LEFT", singleSoundDropdown, "RIGHT", 5, 0)
     singleSoundpreviewButton:SetText("Play Sample")
     singleSoundpreviewButton:SetScript("OnClick", function()
-        SoundSystem.playRandomSingleSound()
+        local selectedSoundsArray = DBUtils.getSelectedOptionsArray("selectedSingleSounds")
+        if #selectedSoundsArray == 0 then return end -- nothing selected
+
+        local soundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
+        local soundPath = SoundSystem.buildSoundPath(SoundSystem.SINGLE_SOUND_FOLDER_NAME, soundName)
+
+        SoundSystem.play(soundPath, true)
     end)
 
     local isSingleSoundSelected = DBUtils.getOptionValue('selectedSoundMode') == SoundSystem.SOUND_MODE.SINGLE_SOUND
-       -- initial state
+    -- initial state
     setGroupEnabled(singleSoundContainer, isSingleSoundSelected)
     setUIEnabled(singleSoundDropdownLabel, isSingleSoundSelected)
 
@@ -180,10 +187,10 @@ local function initOptionsFrame()
     -- moved to the bottom so it can access all tge frames above
     MenuUtil.CreateRadioMenu(soundMode,
         function(value) return value == DBUtils.getOptionValue('selectedSoundMode') end,
-        function(value) 
+        function(value)
             DBUtils.setOptionValue('selectedSoundMode', value)
-            
-            if value == SoundSystem.SOUND_MODE.SINGLE_SOUND then  -- single_sound
+
+            if value == SoundSystem.SOUND_MODE.SINGLE_SOUND then -- single_sound
                 setGroupEnabled(soundPackContainer, false)
                 setUIEnabled(soundPackDropdownLabel, false)
                 setGroupEnabled(singleSoundContainer, true)
@@ -204,13 +211,14 @@ end
 function openOptionsPanel()
     -- Settings.OpenToCategory throws an error when in-combat
     if UnitAffectingCombat("player") then
-        return print('|cffff0000HK|r Sounds: You can’t use this slash command during combat. Please try again once combat has ended.')
+        return print(
+            '|cffff0000HK|r Sounds: You can’t use this slash command during combat. Please try again once combat has ended.')
     end
     Settings.OpenToCategory(addonCategoryId)
 end
 
 loader:SetScript("OnEvent", function(self, event, name)
-    if  event == OPTIONS_TRACKED_EVENTS.ADDON_LOADED then
+    if event == OPTIONS_TRACKED_EVENTS.ADDON_LOADED then
         if name ~= addonName then
             return
         end
@@ -226,6 +234,5 @@ loader:RegisterEvent(OPTIONS_TRACKED_EVENTS.ADDON_LOADED)
 SLASH_HKSOUNDS1 = "/hks"
 SLASH_HKSOUNDS2 = "/hksounds"
 SlashCmdList["HKSOUNDS"] = function(params)
-   openOptionsPanel()
-end 
-
+    openOptionsPanel()
+end

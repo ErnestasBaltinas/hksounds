@@ -27,9 +27,8 @@ local streakTimer = nil
 -- ========= HELPERS =========
 
 local function getCurrentTotalKills()
-
     -- 1487 -- Achievement -> Statistics -> Total Killing Blows
-    local _, _, _, _, _, _,_,_, killCount = GetAchievementCriteriaInfoByID(1487, 0)
+    local _, _, _, _, _, _, _, _, killCount = GetAchievementCriteriaInfoByID(1487, 0)
 
     return killCount
 end
@@ -44,7 +43,7 @@ local function isInOpenWorld()
 end
 
 local function isGUIDSecret(guid)
-	return issecretvalue(guid)
+    return issecretvalue(guid)
 end
 
 -- HACKY WORKAROUND:
@@ -55,7 +54,7 @@ end
 local function wasKilledByPlayer(attackerGUID)
     if isGUIDSecret(attackerGUID) then
         local currentKills = getCurrentTotalKills()
-        
+
         if currentKills > totalKillsCount then
             totalKillsCount = currentKills
             return true
@@ -72,7 +71,6 @@ end
 -- When the GUID is secret and we're in a PvP instance, we assume
 -- the target is a player (human), since PARTY_KILL only fires for players.
 local function isTargetPlayer(targetGUID)
-
     -- Secret GUIDs cannot be inspected
     if isGUIDSecret(targetGUID) then
         return isInPvPInstance()
@@ -101,31 +99,42 @@ local function resetKillStreak()
     multiKill = 0
     killTime = 0
 end
--- ========= SOUND LOOKUP =========
-local function getStreakSound(count)
-	local maxIndex = #SoundSystem.STREAK_SOUNDS
-    return SoundSystem.STREAK_SOUNDS[math.min(maxIndex, count)]
+
+-- ========= SOUND LOGIC =========
+
+local function dispatchRandomSingleSound(useMasterChannel)
+    local selectedSoundsArray = DBUtils.getSelectedOptionsArray("selectedSingleSounds")
+    if #selectedSoundsArray == 0 then return end -- nothing selected
+
+    local soundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
+    local soundPath = SoundSystem.buildSoundPath(SoundSystem.SINGLE_SOUND_FOLDER_NAME, soundName)
+
+    SoundSystem.play(soundPath, useMasterChannel)
 end
 
--- ========= SOUND SCHEDULING =========
+local function dispatchSoundPackSound(soundName, useMasterChannel)
+    local folder = DBUtils.getOptionValue('selectedSoundPack') -- selected sound pack acts like a folder
+    local soundPath = SoundSystem.buildSoundPath(folder, soundName);
+    SoundSystem.play(soundPath, useMasterChannel)
+end
+
 local function scheduleStreakSound(soundName)
     if streakTimer then
         streakTimer:Cancel()
     end
 
     streakTimer = C_Timer.NewTimer(SOUND_DELAY, function()
-        SoundSystem.play(soundName, false) -- default sound channel
+        dispatchSoundPackSound(soundName, false) -- default sound channel
         streakTimer = nil
     end)
 end
 
--- ========= SOUND DISPATCH =========
 local function playKillSounds(multiKillCount, killStreakCount)
-    local streakSound = getStreakSound(killStreakCount)
+    local streakSound = SoundSystem.getStreakSound(killStreakCount)
 
     -- play multi-kill immediately
     if multiKillCount > 1 and SoundSystem.MULTI_KILL_SOUND_NAME then
-        SoundSystem.play(SoundSystem.MULTI_KILL_SOUND_NAME, true)
+        dispatchSoundPackSound(SoundSystem.MULTI_KILL_SOUND_NAME, true)
     end
 
     if not streakSound then return end
@@ -134,36 +143,32 @@ local function playKillSounds(multiKillCount, killStreakCount)
     if multiKillCount > 1 then
         scheduleStreakSound(streakSound)
     else
-        SoundSystem.play(streakSound, true)
+        dispatchSoundPackSound(streakSound, true)
     end
-
 end
 
 -- ========= EVENT HANDLERS =========
 local function handlePartyKill(attackerGUID, targetGUID)
-
     local killedByPlayer = wasKilledByPlayer(attackerGUID);
     local isTargetHuman = isTargetPlayer(targetGUID)
-    
-    if not killedByPlayer then 
-        return 
+
+    if not killedByPlayer then
+        return
     end
-    
-    if not isTargetHuman then 
+
+    if not isTargetHuman then
         return
     end
 
     local soundMode = DBUtils.getOptionValue('selectedSoundMode');
     if soundMode == SoundSystem.SOUND_MODE.SINGLE_SOUND then
-        SoundSystem.playRandomSingleSound()
+        dispatchRandomSingleSound(true)
     elseif soundMode == SoundSystem.SOUND_MODE.SOUND_PACK then
         local now = GetTime()
         local mk, ks = updateKillCounters(now)
 
         playKillSounds(mk, ks)
     end
-
-
 end
 
 local function handlePlayerDead()
@@ -172,10 +177,9 @@ end
 
 local function handleZoneChanged()
     if isInPvPInstance() then
-
         local soundMode = DBUtils.getOptionValue('selectedSoundMode');
         if soundMode == SoundSystem.SOUND_MODE.SOUND_PACK then
-            SoundSystem.play(SoundSystem.BASE_SOUNDS.START_GAME, true)
+            dispatchSoundPackSound(SoundSystem.BASE_SOUNDS.START_GAME, true)
         end
     end
     resetKillStreak()
@@ -204,7 +208,6 @@ local function init()
     for _, eventName in pairs(TRACKED_EVENTS) do
         frame:RegisterEvent(eventName)
     end
-    
 end
 
 init()
