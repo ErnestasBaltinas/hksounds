@@ -5,10 +5,15 @@ addon.DBUtils = {}
 local DBUtils = addon.DBUtils
 
 local defaultOptions = {
+    soundModeEnabled = true,
     selectedSoundMode = 'sound_pack',
     selectedSoundPack = 'ut_classic_female',
     -- selectedSingleSound =  'bonk', -- deprecated, replaced by selectedSingleSounds
-    selectedSingleSounds = { ["gunshot"] = true }
+    selectedSingleSounds = { ["gunshot"] = true },
+    friendlyDeathModeEnabled = false,
+    selectedFriendlyDeathSounds = { ["goatscream"] = true },
+    enemyDeathModeEnabled = false,
+    selectedEnemyDeathSounds = { ["gunshot2"] = true },
 }
 
 function DBUtils.getOptionValue(id)

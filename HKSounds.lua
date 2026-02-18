@@ -2,7 +2,7 @@
 -- HKSounds - UT-style PvP Kill Announcer
 -- =========================================
 
--- imports
+-- ========= Imports =========
 local addonName, addon = ...
 local SoundSystem = addon.SoundSystem
 local DBUtils = addon.DBUtils
@@ -12,10 +12,11 @@ local KILL_RESET_TIME = 5 -- seconds
 local SOUND_DELAY = 2
 
 local TRACKED_EVENTS = {
-    PARTY_KILL = "PARTY_KILL",
     ZONE_CHANGED_NEW_AREA = "ZONE_CHANGED_NEW_AREA",
     PLAYER_DEAD = "PLAYER_DEAD"
 }
+local PARTY_KILL = "PARTY_KILL" -- tracked separately basedon the enabled flag
+local UNIT_DIED = "UNIT_DIED"   -- tracked separately when in arenas
 
 -- ========= STATE =========
 local totalKillsCount = 0;
@@ -23,6 +24,8 @@ local killStreak = 0
 local multiKill = 0
 local killTime = 0
 local streakTimer = nil
+
+local deadUnitsInArena = {} -- player, party1, party2, arena1, arena2, arena3 = true
 
 -- ========= HELPERS =========
 
@@ -80,7 +83,7 @@ local function isTargetPlayer(targetGUID)
     return type(targetGUID) == "string" and targetGUID:match("^Player%-") ~= nil
 end
 
--- ========= KILL COUNTERS =========
+-- ========= KILL STATE MACHINE =========
 local function updateKillCounters(now)
     if killTime + KILL_RESET_TIME > now then
         multiKill = multiKill + 1
@@ -100,19 +103,87 @@ local function resetKillStreak()
     killTime = 0
 end
 
--- ========= SOUND LOGIC =========
-
-local function dispatchRandomSingleSound(useMasterChannel)
-    local selectedSoundsArray = DBUtils.getSelectedOptionsArray("selectedSingleSounds")
-    if #selectedSoundsArray == 0 then return end -- nothing selected
-
-    local randomSoundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
-    SoundSystem.playFromFolder(SoundSystem.SINGLE_SOUND_FOLDER_NAME, randomSoundName, useMasterChannel)
+-- ========= ARENA DEATH TRACKER =========
+local function markUnitDead(unitId)
+    deadUnitsInArena[unitId] = true
 end
+
+local function isUnitNewlyDead(unit)
+    return ArenaUtil.UnitExists(unit)
+        and UnitIsDead(unit)
+        and not deadUnitsInArena[unit] == true
+end
+
+local function getNewlyDeadFriendlyUnit()
+    -- Check player first
+    if isUnitNewlyDead("player") then
+        return "player"
+    end
+
+    -- Check party members (excluding player)
+    local playerCount = C_WoWLabsMatchmaking.GetPartySize() - 1
+    for i = 1, playerCount do
+        local unitId = "party" .. i
+        if isUnitNewlyDead(unitId) then
+            return unitId
+        end
+    end
+
+    return nil
+end
+
+
+local function getNewlyDeadEnemyUnit()
+    local playerCount = GetNumArenaOpponentSpecs()
+    for i = 1, playerCount do
+        local unitId = "arena" .. i
+        if isUnitNewlyDead(unitId) then
+            return unitId
+        end
+    end
+
+    return nil
+end
+
+-- ========= SOUND ENGINE  =========
 
 local function dispatchSoundPackSound(soundName, useMasterChannel)
     local folder = DBUtils.getOptionValue('selectedSoundPack') -- selected sound pack acts like a folder
     SoundSystem.playFromFolder(folder, soundName, useMasterChannel)
+end
+
+local function dispatchRandomSound(optionKey, folderName, useMasterChannel)
+    local selectedSoundsArray = DBUtils.getSelectedOptionsArray(optionKey)
+    if #selectedSoundsArray == 0 then
+        return -- nothing selected
+    end
+
+    local randomSoundName = selectedSoundsArray[math.random(#selectedSoundsArray)]
+    SoundSystem.playFromFolder(folderName, randomSoundName, useMasterChannel)
+end
+
+local function dispatchRandomSingleSound(useMasterChannel)
+    dispatchRandomSound(
+        "selectedSingleSounds",
+        SoundSystem.SINGLE_SOUND_FOLDER_NAME,
+        useMasterChannel
+    )
+end
+
+local function dispatchRandomFriendlyDeathSound(useMasterChannel)
+    dispatchRandomSound(
+        "selectedFriendlyDeathSounds",
+        SoundSystem.SINGLE_SOUND_FOLDER_NAME,
+        useMasterChannel
+    )
+end
+
+local function dispatchRandomEnemyDeathSound(useMasterChannel)
+    dispatchRandomSound(
+        "selectedEnemyDeathSounds",
+        SoundSystem.SINGLE_SOUND_FOLDER_NAME,
+        useMasterChannel
+    )
 end
 
 local function scheduleStreakSound(soundName)
@@ -156,8 +227,12 @@ local function playKillingBlowSound()
     end
 end
 
--- ========= EVENT HANDLERS =========
+-- ========= EVENT DOMAIN HANDLERS =========
 local function handlePartyKill(attackerGUID, targetGUID)
+    if not DBUtils.getOptionValue('soundModeEnabled') then
+        return
+    end
+
     local killedByPlayer = wasKilledByPlayer(attackerGUID);
     if not killedByPlayer then
         return
@@ -169,6 +244,34 @@ local function handlePartyKill(attackerGUID, targetGUID)
     end
 
     playKillingBlowSound()
+end
+
+local function handleUnitDeathInArena()
+    if DBUtils.getOptionValue('friendlyDeathModeEnabled') then
+        local partyUnitDead = getNewlyDeadFriendlyUnit()
+
+        if partyUnitDead then
+            markUnitDead(partyUnitDead)
+            dispatchRandomFriendlyDeathSound(true)
+        end
+    end
+
+    -- pseudo code for the next feature
+    -- local arenaUnitDead = "arena1" --unit or nil
+    -- if arenaUnitDead then
+    --     local playerGotKB = true   -- true/false
+
+    --     if playerGotKB then
+    --         playKillingBlowSound()
+    --     else
+    --         local enemyDeathEnabled = true -- true/false
+    --         if enemyDeathEnabled then
+    --             -- play enemy death sound
+    --         end
+    --     end
+
+    --     return
+    -- end
 end
 
 local function handlePlayerDead()
@@ -185,18 +288,51 @@ local function handleZoneChanged()
     resetKillStreak()
 end
 
--- ========= FRAME / EVENTS =========
+-- ========= EVENT LIFECYCLE MANAGEMENT =========
+
+local function managePartyKillEvent(self)
+    if DBUtils.getOptionValue('soundModeEnabled') then
+        self:RegisterEvent(PARTY_KILL)
+    else
+        self:UnregisterEvent(PARTY_KILL)
+    end
+end
+
+local function manageUnitDiedEvent(self)
+    if not DBUtils.getOptionValue('friendlyDeathModeEnabled') then
+        if self:IsEventRegistered(UNIT_DIED) then
+            self:UnregisterEvent(UNIT_DIED) -- spammy event, Unregister when we dont want to track it
+            wipe(deadUnitsInArena)
+        end
+
+        return
+    end
+
+    if C_PvP.IsMatchConsideredArena() then
+        self:RegisterEvent(UNIT_DIED)
+    else
+        self:UnregisterEvent(UNIT_DIED) -- spammy event, Unregister when we dont want to track it
+        wipe(deadUnitsInArena)
+    end
+end
+
+-- ========= FRAME / ROUTING  =========
 local function eventHandler(self, event, ...)
-    if event == TRACKED_EVENTS.PARTY_KILL then
+    if event == PARTY_KILL then
         handlePartyKill(...)
     elseif event == TRACKED_EVENTS.PLAYER_DEAD then
         handlePlayerDead()
     elseif event == TRACKED_EVENTS.ZONE_CHANGED_NEW_AREA then
         handleZoneChanged()
+        managePartyKillEvent(self)
+        manageUnitDiedEvent(self)
+    elseif event == UNIT_DIED then
+        handleUnitDeathInArena()
     end
 end
 
 local function init()
+    DBUtils.initSavedVars() -- load local db file
     -- Initialize baseline kill count.
     -- Used as a heuristic to infer player kills when PvP GUIDs are hidden (<secret>)
     -- in arenas and battlegrounds.
@@ -208,6 +344,9 @@ local function init()
     for _, eventName in pairs(TRACKED_EVENTS) do
         frame:RegisterEvent(eventName)
     end
+
+    managePartyKillEvent(frame)
+    manageUnitDiedEvent(frame) -- register UNIT_DIED if in arena and friendly death sounds enabled
 end
 
 init()

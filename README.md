@@ -23,13 +23,19 @@
 
 - If sound packs are not your thing, you can switch to **Single Sound** mode and choose one or more of the available sounds from the list. Once selected, the sounds will play randomly on every killing blow.
 - If you have ideas for new sounds you’d like to use, feel free to share them — they can be added to the list in future updates.
-- Available sounds: `arrowimpact.ogg`, `bonk.ogg`, `gunshot.ogg`, `gunshot2.ogg`, `murky.ogg`, `murloc.ogg`, `wegothim.ogg`, `wilhelmscream.ogg`, `boomheadshot.ogg`, `goatscream.ogg`
+- Available sounds: `arrowimpact.ogg`, `bonk.ogg`, `gunshot.ogg`, `gunshot2.ogg`, `gunshot3.ogg`, `murky.ogg`, `murloc.ogg`, `wegothim.ogg`, `wilhelmscream.ogg`, `boomheadshot.ogg`, `goatscream.ogg`
 
 ⚔️ **Works in:**
 
 - Battlegrounds
 - Arenas
 - Open-world PvP
+
+🔔 **Friendly Death Sounds (Arena Only)**
+
+- Optional sound notifications when a friendly player dies in Arena.
+- Can be enabled/disabled in the addon settings.
+- Community requested feature.
 
 🧠 **Blizzard API–friendly:** Designed around modern WoW API limitations.
 
