@@ -57,7 +57,6 @@ end
 local function wasKilledByPlayer(attackerGUID)
     if isGUIDSecret(attackerGUID) then
         local currentKills = getCurrentTotalKills()
-
         if currentKills > totalKillsCount then
             totalKillsCount = currentKills
             return true
@@ -233,13 +232,13 @@ local function handlePartyKill(attackerGUID, targetGUID)
         return
     end
 
-    local killedByPlayer = wasKilledByPlayer(attackerGUID);
-    if not killedByPlayer then
+    local isTargetHuman = isTargetPlayer(targetGUID)
+    if not isTargetHuman then
         return
     end
 
-    local isTargetHuman = isTargetPlayer(targetGUID)
-    if not isTargetHuman then
+    local killedByPlayer = wasKilledByPlayer(attackerGUID);
+    if not killedByPlayer then
         return
     end
 
