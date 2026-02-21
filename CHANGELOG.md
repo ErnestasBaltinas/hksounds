@@ -1,3 +1,9 @@
+## HK Sounds release 4.0.1
+
+### Changes
+
+- Fixed a LUA error that could occur while inside PvE instances.
+
 ## HK Sounds release 4.0.0
 
 ### Changes
