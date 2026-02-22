@@ -1,3 +1,9 @@
+## HK Sounds release 4.1.0
+
+### Changes
+
+- Improved killing blow detection reliability in Battlegrounds.
+
 ## HK Sounds release 4.0.1
 
 ### Changes

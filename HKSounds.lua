@@ -15,10 +15,14 @@ local TRACKED_EVENTS = {
     ZONE_CHANGED_NEW_AREA = "ZONE_CHANGED_NEW_AREA",
     PLAYER_DEAD = "PLAYER_DEAD"
 }
-local PARTY_KILL = "PARTY_KILL" -- tracked separately basedon the enabled flag
-local UNIT_DIED = "UNIT_DIED"   -- tracked separately when in arenas
+local PARTY_KILL = "PARTY_KILL"                             -- tracked separately basedon the enabled flag
+local UNIT_DIED = "UNIT_DIED"                               -- tracked separately when in arenas
+local UPDATE_BATTLEFIELD_SCORE = "UPDATE_BATTLEFIELD_SCORE" -- registered transiently in BGs
 
 -- ========= STATE =========
+local frame                      -- elevated to module scope so domain handlers can register events
+local previousBGKillingBlows = 0 -- rolling BG KB count; updated each time score data arrives
+
 local totalKillsCount = 0;
 local killStreak = 0
 local multiKill = 0
@@ -45,6 +49,28 @@ local function isInOpenWorld()
     return instanceType == "none"
 end
 
+local function getBGKillingBlows()
+    local playerName = UnitName("player")
+    local numScores = GetNumBattlefieldScores()
+    for i = 1, numScores do
+        local name, killingBlows = GetBattlefieldScore(i)
+        if name == playerName then
+            return killingBlows
+        end
+    end
+    return nil
+end
+
+local function isInBattleground()
+    local _, instanceType = IsInInstance()
+    return instanceType == "pvp"
+end
+
+local function resetBGKillTracking()
+    previousBGKillingBlows = 0
+    frame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE) -- safe no-op if not registered
+end
+
 local function isGUIDSecret(guid)
     return issecretvalue(guid)
 end
@@ -53,16 +79,9 @@ end
 -- In any instances (arenas/BGs), Blizzard hides attacker GUIDs as <secret>.
 -- When the GUID is secret, we infer whether the kill was ours by
 -- detecting an increase in the player's total kill counter.
--- This function has side-effects (updates totalKillsCount) by design.
 local function wasKilledByPlayer(attackerGUID)
     if isGUIDSecret(attackerGUID) then
-        local currentKills = getCurrentTotalKills()
-        if currentKills > totalKillsCount then
-            totalKillsCount = currentKills
-            return true
-        end
-
-        return false
+        return getCurrentTotalKills() > totalKillsCount
     end
 
     return attackerGUID == UnitGUID("player")
@@ -237,12 +256,32 @@ local function handlePartyKill(attackerGUID, targetGUID)
         return
     end
 
+    -- Guard must stay here: PARTY_KILL fires for all party member kills, not just the player's.
+    -- Moving this into the else branch would cause unnecessary RequestBattlefieldScoreData() calls on teammate kills.
     local killedByPlayer = wasKilledByPlayer(attackerGUID);
     if not killedByPlayer then
         return
     end
 
-    playKillingBlowSound()
+    totalKillsCount = getCurrentTotalKills()
+
+    if isInBattleground() then
+        frame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
+        RequestBattlefieldScoreData()
+    else
+        playKillingBlowSound()
+    end
+end
+
+local function handleBattlefieldScoreUpdate(self)
+    self:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE)
+
+    local currentKBs = getBGKillingBlows()
+    if currentKBs and currentKBs > previousBGKillingBlows then
+        playKillingBlowSound()
+    end
+
+    previousBGKillingBlows = currentKBs or previousBGKillingBlows
 end
 
 local function handleUnitDeathInArena()
@@ -278,6 +317,8 @@ local function handlePlayerDead()
 end
 
 local function handleZoneChanged()
+    resetBGKillTracking()
+
     if isInPvPInstance() then
         local soundMode = DBUtils.getOptionValue('selectedSoundMode');
         if soundMode == SoundSystem.SOUND_MODE.SOUND_PACK then
@@ -327,6 +368,8 @@ local function eventHandler(self, event, ...)
         manageUnitDiedEvent(self)
     elseif event == UNIT_DIED then
         handleUnitDeathInArena()
+    elseif event == UPDATE_BATTLEFIELD_SCORE then
+        handleBattlefieldScoreUpdate(self)
     end
 end
 
@@ -337,7 +380,7 @@ local function init()
     -- in arenas and battlegrounds.
     totalKillsCount = getCurrentTotalKills()
 
-    local frame = CreateFrame("Frame")
+    frame = CreateFrame("Frame")
     frame:SetScript("OnEvent", eventHandler)
 
     for _, eventName in pairs(TRACKED_EVENTS) do
