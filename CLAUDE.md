@@ -57,6 +57,7 @@ Stored in `HKSoundsDB` (global). Accessed via `DBUtils.getOptionValue(key)` / `D
 ### Event Architecture
 - A single `Frame` handles all events via one `eventHandler` function (routing pattern)
 - `UNIT_DIED` and `PARTY_KILL` are registered/unregistered dynamically based on settings and zone
+- `PLAYER_LOGIN` is used to initialize `totalKillsCount` once achievement data is guaranteed loaded
 
 ### Killing Blow Detection
 
@@ -66,7 +67,7 @@ Stored in `HKSoundsDB` (global). Accessed via `DBUtils.getOptionValue(key)` / `D
 
 **Arena** — Both GUIDs are `<secret>`, so both functions fall back to heuristics that are not 100% accurate:
 - `isTargetPlayer()`: assumes the target is a player if the GUID is secret and we're in a PvP instance. This is a known imprecision — it will also match totems, pets, etc.
-- `wasKilledByPlayer()`: reads the total killing blow count from achievements/statistics (`GetAchievementCriteriaInfoByID(1487, 0)`) and compares it against `totalKillsCount` (saved at addon init and synced after each confirmed kill). If the count increased, we assume the player got the KB. If requirements are met, the sound plays based on settings and the current kill streak.
+- `wasKilledByPlayer()`: reads the total killing blow count from achievements/statistics (`GetAchievementCriteriaInfoByID(1487, 0)`, return value position 4 = `quantity`) and compares it against `totalKillsCount`. If the count increased, we assume the player got the KB. Contains a nil guard — returns `false` if either value is nil. If requirements are met, the sound plays based on settings and the current kill streak.
 
 Currently, open world and arena killing blow logic share the same code path. The intent is to separate them in the future for cleaner, environment-specific handling.
 
@@ -83,7 +84,7 @@ Tracked via `UNIT_DIED`, which is only registered when the feature is enabled an
 The `PARTY_KILL` event passes two arguments: `attackerGUID` and `targetGUID`. In any instanced environment — arenas, battlegrounds, dungeons, raids — Blizzard hides **both** of these as `<secret>` values (checked via `issecretvalue()`). This means we can never directly know who landed the killing blow or who died. All kill and target detection logic in this addon exists to work around this limitation.
 
 **Current workarounds:**
-- **Kill detection**: When attacker GUID is secret, infer player kill by comparing total kill count (`GetAchievementCriteriaInfoByID(1487, 0)`) before and after the event. `wasKilledByPlayer()` is a pure predicate — it only reads `totalKillsCount`. The sync (`totalKillsCount = getCurrentTotalKills()`) happens in `handlePartyKill` after the kill is confirmed.
+- **Kill detection**: When attacker GUID is secret, infer player kill by comparing total kill count (`GetAchievementCriteriaInfoByID(1487, 0)`) before and after the event. `wasKilledByPlayer()` is a pure predicate — it only reads `totalKillsCount`. The sync (`syncTotalKills()`) happens whenever the player lands a kill — including non-player targets like totems and pets, which also increment the achievement counter. It also syncs on `PLAYER_LOGIN` and `ZONE_CHANGED_NEW_AREA` to keep the baseline accurate.
 - **Target type detection**: When target GUID is secret and we're in a PvP instance, assume the target is a player (since `PARTY_KILL` only fires for players)
 
 Always check the latest WoW API before implementing anything:

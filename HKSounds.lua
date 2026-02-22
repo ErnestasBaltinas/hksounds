@@ -13,7 +13,8 @@ local SOUND_DELAY = 2
 
 local TRACKED_EVENTS = {
     ZONE_CHANGED_NEW_AREA = "ZONE_CHANGED_NEW_AREA",
-    PLAYER_DEAD = "PLAYER_DEAD"
+    PLAYER_DEAD = "PLAYER_DEAD",
+    PLAYER_LOGIN = "PLAYER_LOGIN"
 }
 local PARTY_KILL = "PARTY_KILL"                             -- tracked separately basedon the enabled flag
 local UNIT_DIED = "UNIT_DIED"                               -- tracked separately when in arenas
@@ -35,9 +36,13 @@ local deadUnitsInArena = {} -- player, party1, party2, arena1, arena2, arena3 = 
 
 local function getCurrentTotalKills()
     -- 1487 -- Achievement -> Statistics -> Total Killing Blows
-    local _, _, _, _, _, _, _, _, killCount = GetAchievementCriteriaInfoByID(1487, 0)
+    local _, _, _, killCount = GetAchievementCriteriaInfoByID(1487, 0)
 
-    return tonumber(killCount)
+    return killCount
+end
+
+local function syncTotalKills()
+    totalKillsCount = getCurrentTotalKills()
 end
 
 local function isInPvPInstance()
@@ -66,6 +71,11 @@ local function isInBattleground()
     return instanceType == "pvp"
 end
 
+local function isInArena()
+    local inInstance, instanceType = IsInInstance()
+    return inInstance and instanceType == "arena"
+end
+
 local function resetBGKillTracking()
     previousBGKillingBlows = 0
     frame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE) -- safe no-op if not registered
@@ -81,7 +91,10 @@ end
 -- detecting an increase in the player's total kill counter.
 local function wasKilledByPlayer(attackerGUID)
     if isGUIDSecret(attackerGUID) then
-        return getCurrentTotalKills() > totalKillsCount
+        local current = getCurrentTotalKills()
+        -- GetAchievementCriteriaInfoByID can return nil if data isn't loaded yet; comparison against nil would error
+        if current == nil or totalKillsCount == nil then return false end
+        return current > totalKillsCount
     end
 
     return attackerGUID == UnitGUID("player")
@@ -251,19 +264,20 @@ local function handlePartyKill(attackerGUID, targetGUID)
         return
     end
 
-    local isTargetHuman = isTargetPlayer(targetGUID)
-    if not isTargetHuman then
-        return
-    end
-
-    -- Guard must stay here: PARTY_KILL fires for all party member kills, not just the player's.
-    -- Moving this into the else branch would cause unnecessary RequestBattlefieldScoreData() calls on teammate kills.
-    local killedByPlayer = wasKilledByPlayer(attackerGUID);
+    -- Guard must stay before the BG branch: PARTY_KILL fires for all party member kills.
+    -- Without this, every teammate kill in a BG would trigger RequestBattlefieldScoreData().
+    local killedByPlayer = wasKilledByPlayer(attackerGUID)
     if not killedByPlayer then
         return
     end
 
-    totalKillsCount = getCurrentTotalKills()
+    -- Always sync baseline when player landed the kill, even for non-player targets.
+    -- Totem/pet kills count toward the achievement and would skew future detection if not tracked.
+    syncTotalKills()
+
+    if not isTargetPlayer(targetGUID) then
+        return
+    end
 
     if isInBattleground() then
         frame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
@@ -312,12 +326,17 @@ local function handleUnitDeathInArena()
     -- end
 end
 
+local function handlePlayerLogin()
+    syncTotalKills()
+end
+
 local function handlePlayerDead()
     resetKillStreak()
 end
 
 local function handleZoneChanged()
     resetBGKillTracking()
+    syncTotalKills()
 
     if isInPvPInstance() then
         local soundMode = DBUtils.getOptionValue('selectedSoundMode');
@@ -348,7 +367,7 @@ local function manageUnitDiedEvent(self)
         return
     end
 
-    if C_PvP.IsMatchConsideredArena() then
+    if isInArena() then
         self:RegisterEvent(UNIT_DIED)
     else
         self:UnregisterEvent(UNIT_DIED) -- spammy event, Unregister when we dont want to track it
@@ -360,6 +379,8 @@ end
 local function eventHandler(self, event, ...)
     if event == PARTY_KILL then
         handlePartyKill(...)
+    elseif event == TRACKED_EVENTS.PLAYER_LOGIN then
+        handlePlayerLogin()
     elseif event == TRACKED_EVENTS.PLAYER_DEAD then
         handlePlayerDead()
     elseif event == TRACKED_EVENTS.ZONE_CHANGED_NEW_AREA then
@@ -375,10 +396,6 @@ end
 
 local function init()
     DBUtils.initSavedVars() -- load local db file
-    -- Initialize baseline kill count.
-    -- Used as a heuristic to infer player kills when PvP GUIDs are hidden (<secret>)
-    -- in arenas and battlegrounds.
-    totalKillsCount = getCurrentTotalKills()
 
     frame = CreateFrame("Frame")
     frame:SetScript("OnEvent", eventHandler)

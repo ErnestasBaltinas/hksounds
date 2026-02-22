@@ -1,3 +1,9 @@
+## HK Sounds release 4.2.0
+
+### Changes
+
+- Various bug fixes and kill detection improvements.
+
 ## HK Sounds release 4.1.0
 
 ### Changes
