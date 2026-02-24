@@ -11,7 +11,7 @@ local DBUtils = addon.DBUtils
 local KILL_RESET_TIME = 5 -- seconds
 local SOUND_DELAY = 2
 
-local TRACKED_EVENTS = {
+local LIFECYCLE_EVENTS = {
     ZONE_CHANGED_NEW_AREA = "ZONE_CHANGED_NEW_AREA",
     PLAYER_DEAD = "PLAYER_DEAD",
     PLAYER_LOGIN = "PLAYER_LOGIN"
@@ -21,7 +21,8 @@ local UNIT_DIED = "UNIT_DIED"                               -- tracked separatel
 local UPDATE_BATTLEFIELD_SCORE = "UPDATE_BATTLEFIELD_SCORE" -- registered transiently in BGs
 
 -- ========= STATE =========
-local frame                      -- elevated to module scope so domain handlers can register events
+local lifecycleFrame
+local killFrame
 local previousBGKillingBlows = 0 -- rolling BG KB count; updated each time score data arrives
 
 local totalKillsCount = 0
@@ -81,7 +82,7 @@ end
 
 local function resetBGKillTracking()
     previousBGKillingBlows = 0
-    frame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE) -- safe no-op if not registered
+    killFrame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE) -- safe no-op if not registered
 end
 
 
@@ -250,7 +251,7 @@ local function handleBGPartyKill()
     if current == nil or totalKillsCount == nil then return end
     if current <= totalKillsCount then return end
 
-    frame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
+    killFrame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
     RequestBattlefieldScoreData()
 end
 
@@ -265,8 +266,8 @@ local function handlePartyKill(attackerGUID, targetGUID)
     end
 end
 
-local function handleBattlefieldScoreUpdate(self)
-    self:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE)
+local function handleBattlefieldScoreUpdate()
+    killFrame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE)
 
     local currentKBs = getBGKillingBlows()
     if currentKBs and currentKBs > previousBGKillingBlows then
@@ -326,75 +327,81 @@ end
 
 -- ========= EVENT LIFECYCLE MANAGEMENT =========
 
-local function managePartyKillEvent(self)
+local function managePartyKillEvent()
     if DBUtils.getOptionValue('soundModeEnabled') and (isInOpenWorld() or isInBattleground()) then
-        self:RegisterEvent(PARTY_KILL)
+        killFrame:RegisterEvent(PARTY_KILL)
     else
-        self:UnregisterEvent(PARTY_KILL)
+        killFrame:UnregisterEvent(PARTY_KILL)
     end
 end
 
-local function manageUnitDiedEvent(self)
+local function manageUnitDiedEvent()
     local anyFeatureEnabled = DBUtils.getOptionValue('soundModeEnabled')
         or DBUtils.getOptionValue('friendlyDeathModeEnabled')
         or DBUtils.getOptionValue('enemyDeathModeEnabled')
 
     if not anyFeatureEnabled then
-        if self:IsEventRegistered(UNIT_DIED) then
-            self:UnregisterEvent(UNIT_DIED) -- spammy event, unregister when we dont want to track it
+        if killFrame:IsEventRegistered(UNIT_DIED) then
+            killFrame:UnregisterEvent(UNIT_DIED) -- spammy event, unregister when we dont want to track it
             wipe(deadUnitsInArena)
         end
         return
     end
 
     if isInArena() then
-        self:RegisterEvent(UNIT_DIED)
+        killFrame:RegisterEvent(UNIT_DIED)
     else
-        self:UnregisterEvent(UNIT_DIED) -- spammy event, unregister when we dont want to track it
+        killFrame:UnregisterEvent(UNIT_DIED) -- spammy event, unregister when we dont want to track it
         wipe(deadUnitsInArena)
     end
 end
 
-local function refreshEventRegistration()
-    managePartyKillEvent(frame)
-    manageUnitDiedEvent(frame)
+local function refreshKillEventRegistration()
+    managePartyKillEvent()
+    manageUnitDiedEvent()
 end
 
 -- it is invoked from options panel as well
-addon.refreshEventRegistration = refreshEventRegistration
+addon.refreshKillEventRegistration = refreshKillEventRegistration
 
 -- ========= FRAME / ROUTING  =========
-local function eventHandler(self, event, ...)
+local function lifecycleHandler(self, event, ...)
+    if event == LIFECYCLE_EVENTS.PLAYER_LOGIN then
+        syncTotalKills()
+    elseif event == LIFECYCLE_EVENTS.PLAYER_DEAD then
+        handlePlayerDead()
+    elseif event == LIFECYCLE_EVENTS.ZONE_CHANGED_NEW_AREA then
+        handleZoneChanged()
+        refreshKillEventRegistration()
+        syncTotalKills()
+    end
+end
+
+local function killHandler(self, event, ...)
     if event == PARTY_KILL then
         handlePartyKill(...)
-        syncTotalKills()
-    elseif event == TRACKED_EVENTS.PLAYER_LOGIN then
-        syncTotalKills()
-    elseif event == TRACKED_EVENTS.PLAYER_DEAD then
-        handlePlayerDead()
-    elseif event == TRACKED_EVENTS.ZONE_CHANGED_NEW_AREA then
-        handleZoneChanged()
-        refreshEventRegistration()
         syncTotalKills()
     elseif event == UNIT_DIED then
         handleUnitDeathInArena()
         syncTotalKills()
     elseif event == UPDATE_BATTLEFIELD_SCORE then
-        handleBattlefieldScoreUpdate(self)
+        handleBattlefieldScoreUpdate()
     end
 end
 
 local function init()
     DBUtils.initSavedVars() -- load local db file
 
-    frame = CreateFrame("Frame")
-    frame:SetScript("OnEvent", eventHandler)
-
-    for _, eventName in pairs(TRACKED_EVENTS) do
-        frame:RegisterEvent(eventName)
+    lifecycleFrame = CreateFrame("Frame")
+    lifecycleFrame:SetScript("OnEvent", lifecycleHandler)
+    for _, eventName in pairs(LIFECYCLE_EVENTS) do
+        lifecycleFrame:RegisterEvent(eventName)
     end
 
-    refreshEventRegistration()
+    killFrame = CreateFrame("Frame")
+    killFrame:SetScript("OnEvent", killHandler)
+
+    refreshKillEventRegistration()
 end
 
 init()

@@ -37,7 +37,7 @@ The addon uses the `local addonName, addon = ...` pattern. Modules attach themse
 Coming from an Angular/TypeScript background, the following conventions are used:
 
 - **Functions**: camelCase (e.g. `handlePartyKill`, `getOptionValue`)
-- **Local constants**: SCREAMING_SNAKE_CASE (e.g. `KILL_RESET_TIME`, `TRACKED_EVENTS`)
+- **Local constants**: SCREAMING_SNAKE_CASE (e.g. `KILL_RESET_TIME`, `LIFECYCLE_EVENTS`)
 - **Module tables**: PascalCase (e.g. `SoundSystem`, `DBUtils`)
 - Sections are separated with `-- ========= SECTION NAME =========` comments
 
@@ -71,17 +71,22 @@ DB option keys:
 
 ## Event Architecture
 
-### Always-registered events (`TRACKED_EVENTS`)
-These are registered unconditionally at startup:
+### Frame architecture
+Two frames are used to separate concerns:
+- **`lifecycleFrame`** — always-registered events that manage addon state and drive re-registration; handled by `lifecycleHandler`
+- **`killFrame`** — dynamically registered kill detection events; handled by `killHandler`
+
+### Always-registered events (`LIFECYCLE_EVENTS`)
+Registered on `lifecycleFrame` unconditionally at startup:
 
 | Event | Handler | Purpose |
 |---|---|---|
 | `PLAYER_LOGIN` | `syncTotalKills()` | Baseline kill count once achievement data is loaded |
 | `PLAYER_DEAD` | `handlePlayerDead()` | Reset kill streak on player death |
-| `ZONE_CHANGED_NEW_AREA` | `handleZoneChanged()` + `refreshEventRegistration()` + `syncTotalKills()` | Reset BG tracking, play start-of-match sound, re-evaluate dynamic event registration |
+| `ZONE_CHANGED_NEW_AREA` | `handleZoneChanged()` + `refreshKillEventRegistration()` + `syncTotalKills()` | Reset BG tracking, play start-of-match sound, re-evaluate dynamic event registration |
 
 ### Dynamically managed events
-Registered/unregistered based on current zone and enabled features via `refreshEventRegistration()`. This is called at startup, on zone change, and when options are toggled.
+Registered/unregistered on `killFrame` based on current zone and enabled features via `refreshKillEventRegistration()`. This is called at startup, on zone change, and when options are toggled.
 
 | Event | Registered when | Handler |
 |---|---|---|
@@ -101,9 +106,9 @@ Detection strategy differs by zone because Blizzard hides GUIDs in instances.
 
 ```
 ZONE_CHANGED_NEW_AREA
-  └─ refreshEventRegistration()
-       ├─ Open world / BG  → register PARTY_KILL
-       └─ Arena            → register UNIT_DIED (if any feature enabled)
+  └─ refreshKillEventRegistration()
+       ├─ Open world / BG  → register PARTY_KILL   (on killFrame)
+       └─ Arena            → register UNIT_DIED     (on killFrame, if any feature enabled)
 ```
 
 ### Open World
@@ -127,12 +132,12 @@ PARTY_KILL
   └─ handlePartyKill()
        └─ handleBGPartyKill()
             ├─ achievement delta > 0?  NO → exit (pre-filter to avoid scoreboard spam)
-            ├─ frame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
+            ├─ killFrame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
             └─ RequestBattlefieldScoreData()
 
 UPDATE_BATTLEFIELD_SCORE  (fires async after scoreboard refresh)
   └─ handleBattlefieldScoreUpdate()
-       ├─ frame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE)
+       ├─ killFrame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE)
        ├─ getBGKillingBlows() > previousBGKillingBlows?
        │    YES → playKillingBlowSound()
        └─ update previousBGKillingBlows

@@ -113,7 +113,7 @@ local function initOptionsFrame()
     soundModeCheckbox:SetChecked(DBUtils.getOptionValue('soundModeEnabled'))
     soundModeCheckbox:SetScript("OnClick", function(self)
         DBUtils.setOptionValue('soundModeEnabled', self:GetChecked())
-        addon.refreshEventRegistration()
+        addon.refreshKillEventRegistration()
 
         if toggleSoundModeFramesFn then
             toggleSoundModeFramesFn()
@@ -284,7 +284,7 @@ local function initOptionsFrame()
     friendlyDeathCheckbox:SetChecked(DBUtils.getOptionValue('friendlyDeathModeEnabled'))
     friendlyDeathCheckbox:SetScript("OnClick", function(self)
         DBUtils.setOptionValue('friendlyDeathModeEnabled', self:GetChecked())
-        addon.refreshEventRegistration()
+        addon.refreshKillEventRegistration()
 
         if toggleFriendlyDeathFramesFn then
             toggleFriendlyDeathFramesFn()
@@ -361,7 +361,7 @@ local function initOptionsFrame()
     enemyDeathCheckbox:SetChecked(DBUtils.getOptionValue('enemyDeathModeEnabled'))
     enemyDeathCheckbox:SetScript("OnClick", function(self)
         DBUtils.setOptionValue('enemyDeathModeEnabled', self:GetChecked())
-        addon.refreshEventRegistration()
+        addon.refreshKillEventRegistration()
 
         if toggleEnemyDeathFramesFn then
             toggleEnemyDeathFramesFn()
