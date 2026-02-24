@@ -24,7 +24,7 @@ local UPDATE_BATTLEFIELD_SCORE = "UPDATE_BATTLEFIELD_SCORE" -- registered transi
 local frame                      -- elevated to module scope so domain handlers can register events
 local previousBGKillingBlows = 0 -- rolling BG KB count; updated each time score data arrives
 
-local totalKillsCount = 0;
+local totalKillsCount = 0
 local killStreak = 0
 local multiKill = 0
 local killTime = 0
@@ -84,38 +84,6 @@ local function resetBGKillTracking()
     frame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE) -- safe no-op if not registered
 end
 
-local function isGUIDSecret(guid)
-    return issecretvalue(guid)
-end
-
--- HACKY WORKAROUND:
--- In any instances (arenas/BGs), Blizzard hides attacker GUIDs as <secret>.
--- When the GUID is secret, we infer whether the kill was ours by
--- detecting an increase in the player's total kill counter.
-local function wasKilledByPlayer(attackerGUID)
-    if isGUIDSecret(attackerGUID) then
-        local current = getCurrentTotalKills()
-        -- GetAchievementCriteriaInfoByID can return nil if data isn't loaded yet; comparison against nil would error
-        if current == nil or totalKillsCount == nil then return false end
-        return current > totalKillsCount
-    end
-
-    return attackerGUID == UnitGUID("player")
-end
-
--- HACKY WORKAROUND:
--- In any instances instances, Blizzard hides enemy GUIDs as <secret>.
--- When the GUID is secret and we're in a PvP instance, we assume
--- the target is a player (human), since PARTY_KILL only fires for players.
-local function isTargetPlayer(targetGUID)
-    -- Secret GUIDs cannot be inspected
-    if isGUIDSecret(targetGUID) then
-        return isInPvPInstance()
-    end
-
-    -- Non-secret GUIDs: player GUIDs always start with "Player-"
-    return type(targetGUID) == "string" and targetGUID:match("^Player%-") ~= nil
-end
 
 -- ========= KILL STATE MACHINE =========
 local function updateKillCounters(now)
@@ -145,7 +113,7 @@ end
 local function isUnitNewlyDead(unit)
     return ArenaUtil.UnitExists(unit)
         and UnitIsDead(unit)
-        and not deadUnitsInArena[unit] == true
+        and not deadUnitsInArena[unit]
 end
 
 local function getNewlyDeadFriendlyUnit()
@@ -266,29 +234,34 @@ end
 --   Open world  : PARTY_KILL → GUID match        → play sound
 --   Battleground: PARTY_KILL → scoreboard delta   → play sound  (async via UPDATE_BATTLEFIELD_SCORE)
 --   Arena       : UNIT_DIED  → achievement delta  → play sound
+
+-- Open world: GUIDs are never hidden, so we match directly.
+local function handleOpenWorldPartyKill(attackerGUID, targetGUID)
+    if attackerGUID ~= UnitGUID("player") then return end
+    if type(targetGUID) ~= "string" or targetGUID:match("^Player%-") == nil then return end
+    playKillingBlowSound()
+end
+
+-- BG: GUIDs are always <secret>. Use achievement delta as a pre-filter to avoid
+-- calling RequestBattlefieldScoreData() for every party member kill; the scoreboard
+-- delta in handleBattlefieldScoreUpdate is the authoritative check.
+local function handleBGPartyKill()
+    local current = getCurrentTotalKills()
+    if current == nil or totalKillsCount == nil then return end
+    if current <= totalKillsCount then return end
+
+    frame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
+    RequestBattlefieldScoreData()
+end
+
+-- Handles open world and BG only. Arena KB detection uses UNIT_DIED instead.
 local function handlePartyKill(attackerGUID, targetGUID)
-    if isInArena() then return end -- arena handled by UNIT_DIED
-
-    if not DBUtils.getOptionValue('soundModeEnabled') then
-        return
-    end
-
-    -- Guard must stay before the BG branch: PARTY_KILL fires for all party member kills.
-    -- Without this, every teammate kill in a BG would trigger RequestBattlefieldScoreData().
-    local killedByPlayer = wasKilledByPlayer(attackerGUID)
-    if not killedByPlayer then
-        return
-    end
-
-    if not isTargetPlayer(targetGUID) then
-        return
-    end
+    if not DBUtils.getOptionValue('soundModeEnabled') then return end
 
     if isInBattleground() then
-        frame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
-        RequestBattlefieldScoreData()
+        handleBGPartyKill()
     else
-        playKillingBlowSound()
+        handleOpenWorldPartyKill(attackerGUID, targetGUID)
     end
 end
 
@@ -303,32 +276,36 @@ local function handleBattlefieldScoreUpdate(self)
     previousBGKillingBlows = currentKBs or previousBGKillingBlows
 end
 
-local function handleUnitDeathInArena()
-    -- Friendly death detection
-    if DBUtils.getOptionValue('friendlyDeathModeEnabled') then
-        local partyUnitDead = getNewlyDeadFriendlyUnit()
-        if partyUnitDead then
-            markUnitDead(partyUnitDead)
-            dispatchRandomFriendlyDeathSound(true)
-        end
-    end
+local function handleFriendlyDeathInArena()
+    if not DBUtils.getOptionValue('friendlyDeathModeEnabled') then return end
 
-    -- Arena kill detection: always detect and bookkeep, regardless of settings
+    local partyUnitDead = getNewlyDeadFriendlyUnit()
+    if partyUnitDead then
+        markUnitDead(partyUnitDead)
+        dispatchRandomFriendlyDeathSound(true)
+    end
+end
+
+local function handleEnemyDeathInArena()
     local enemyUnitDead = getNewlyDeadEnemyUnit()
+    if not enemyUnitDead then return end
+
+    markUnitDead(enemyUnitDead)
+
     local current = getCurrentTotalKills()
     local playerGotKill = current ~= nil and totalKillsCount ~= nil and current > totalKillsCount
 
-    if enemyUnitDead then markUnitDead(enemyUnitDead) end
-
-    -- Killing blow sound: player got the KB
-    if enemyUnitDead and playerGotKill and DBUtils.getOptionValue('soundModeEnabled') then
+    -- Killing blow sound takes priority; enemy death sound fills all other cases
+    if playerGotKill and DBUtils.getOptionValue('soundModeEnabled') then
         playKillingBlowSound()
-    end
-
-    -- Enemy death sound: enemy died but player did not get the KB
-    if enemyUnitDead and not playerGotKill and DBUtils.getOptionValue('enemyDeathModeEnabled') then
+    elseif DBUtils.getOptionValue('enemyDeathModeEnabled') then
         dispatchRandomEnemyDeathSound(true)
     end
+end
+
+local function handleUnitDeathInArena()
+    handleFriendlyDeathInArena()
+    handleEnemyDeathInArena()
 end
 
 local function handlePlayerDead()
@@ -350,7 +327,7 @@ end
 -- ========= EVENT LIFECYCLE MANAGEMENT =========
 
 local function managePartyKillEvent(self)
-    if DBUtils.getOptionValue('soundModeEnabled') then
+    if DBUtils.getOptionValue('soundModeEnabled') and (isInOpenWorld() or isInBattleground()) then
         self:RegisterEvent(PARTY_KILL)
     else
         self:UnregisterEvent(PARTY_KILL)
@@ -378,6 +355,14 @@ local function manageUnitDiedEvent(self)
     end
 end
 
+local function refreshEventRegistration()
+    managePartyKillEvent(frame)
+    manageUnitDiedEvent(frame)
+end
+
+-- it is invoked from options panel as well
+addon.refreshEventRegistration = refreshEventRegistration
+
 -- ========= FRAME / ROUTING  =========
 local function eventHandler(self, event, ...)
     if event == PARTY_KILL then
@@ -389,8 +374,7 @@ local function eventHandler(self, event, ...)
         handlePlayerDead()
     elseif event == TRACKED_EVENTS.ZONE_CHANGED_NEW_AREA then
         handleZoneChanged()
-        managePartyKillEvent(self)
-        manageUnitDiedEvent(self)
+        refreshEventRegistration()
         syncTotalKills()
     elseif event == UNIT_DIED then
         handleUnitDeathInArena()
@@ -410,8 +394,7 @@ local function init()
         frame:RegisterEvent(eventName)
     end
 
-    managePartyKillEvent(frame)
-    manageUnitDiedEvent(frame) -- register UNIT_DIED if in arena and friendly death sounds enabled
+    refreshEventRegistration()
 end
 
 init()

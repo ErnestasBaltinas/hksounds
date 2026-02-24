@@ -113,6 +113,7 @@ local function initOptionsFrame()
     soundModeCheckbox:SetChecked(DBUtils.getOptionValue('soundModeEnabled'))
     soundModeCheckbox:SetScript("OnClick", function(self)
         DBUtils.setOptionValue('soundModeEnabled', self:GetChecked())
+        addon.refreshEventRegistration()
 
         if toggleSoundModeFramesFn then
             toggleSoundModeFramesFn()
@@ -283,6 +284,7 @@ local function initOptionsFrame()
     friendlyDeathCheckbox:SetChecked(DBUtils.getOptionValue('friendlyDeathModeEnabled'))
     friendlyDeathCheckbox:SetScript("OnClick", function(self)
         DBUtils.setOptionValue('friendlyDeathModeEnabled', self:GetChecked())
+        addon.refreshEventRegistration()
 
         if toggleFriendlyDeathFramesFn then
             toggleFriendlyDeathFramesFn()
@@ -359,6 +361,7 @@ local function initOptionsFrame()
     enemyDeathCheckbox:SetChecked(DBUtils.getOptionValue('enemyDeathModeEnabled'))
     enemyDeathCheckbox:SetScript("OnClick", function(self)
         DBUtils.setOptionValue('enemyDeathModeEnabled', self:GetChecked())
+        addon.refreshEventRegistration()
 
         if toggleEnemyDeathFramesFn then
             toggleEnemyDeathFramesFn()
@@ -409,8 +412,8 @@ local function initOptionsFrame()
     toggleEnemyDeathFramesFn() -- set initial state based on saved options
 end
 
--- global function for AddonCompartmentFunc
-function openOptionsPanel()
+-- AddonCompartmentFunc requires a global; export explicitly rather than defining globally
+local function openOptionsPanel()
     -- Settings.OpenToCategory throws an error when in-combat
     if UnitAffectingCombat("player") then
         return print(
@@ -418,6 +421,7 @@ function openOptionsPanel()
     end
     Settings.OpenToCategory(addonCategoryId)
 end
+_G.openOptionsPanel = openOptionsPanel -- required by AddonCompartmentFunc in HKSounds.toc
 
 loader:SetScript("OnEvent", function(self, event, name)
     if event == OPTIONS_TRACKED_EVENTS.ADDON_LOADED then

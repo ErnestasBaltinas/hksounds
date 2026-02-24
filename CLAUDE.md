@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**HK Sounds** is a World of Warcraft Retail addon (Interface: 120000) that plays Unreal Tournament-style announcer sounds on PvP killing blows. It also supports friendly death alerts in arenas.
+**HK Sounds** is a World of Warcraft Retail addon (Interface: 120000) that plays Unreal Tournament-style announcer sounds on PvP killing blows. It also supports friendly and enemy death alerts in arenas.
 
 Built in Lua using the WoW addon API. Author: Dream.
 
@@ -48,44 +48,181 @@ Coming from an Angular/TypeScript background, the following conventions are used
 ### Saved Variables
 Stored in `HKSoundsDB` (global). Accessed via `DBUtils.getOptionValue(key)` / `DBUtils.setOptionValue(key, value)`. Defaults and migrations live in `HKSoundsDBUtils.lua`.
 
+DB option keys:
+| Key | Type | Description |
+|---|---|---|
+| `soundModeEnabled` | bool | Master toggle for killing blow sounds |
+| `selectedSoundMode` | string | `"sound_pack"` or `"single_sound"` |
+| `selectedSoundPack` | string | Folder ID of the active sound pack |
+| `selectedSingleSounds` | table | `{ [soundId] = true }` set of selected single sounds |
+| `friendlyDeathModeEnabled` | bool | Toggle for friendly death alert (arena only) |
+| `selectedFriendlyDeathSounds` | table | `{ [soundId] = true }` set for friendly death sounds |
+| `enemyDeathModeEnabled` | bool | Toggle for enemy death alert (arena only) |
+| `selectedEnemyDeathSounds` | table | `{ [soundId] = true }` set for enemy death sounds |
+
 ### Sound System
 - Sounds are `.ogg` files under `sounds/<folder>/<name>.ogg`
 - Sound pack folder name = its string ID (e.g. `ut_classic_female`)
 - Single sounds live in `sounds/single/`
 - Two modes: `sound_pack` (streak/multikill logic) and `single_sound` (random from selection)
+- All single-sound pools (KB, friendly death, enemy death) share the same `sounds/single/` folder
 
-### Event Architecture
-- A single `Frame` handles all events via one `eventHandler` function (routing pattern)
-- `UNIT_DIED` and `PARTY_KILL` are registered/unregistered dynamically based on settings and zone
-- `PLAYER_LOGIN` is used to initialize `totalKillsCount` once achievement data is guaranteed loaded
+---
 
-### Killing Blow Detection
+## Event Architecture
 
-`PARTY_KILL` is the primary event for detecting kills. It fires for all party member kills (not just the player's), passing `attackerGUID` and `targetGUID`. `handlePartyKill` is the entry point that routes the flow depending on the current environment.
+### Always-registered events (`TRACKED_EVENTS`)
+These are registered unconditionally at startup:
 
-**Open world** — GUIDs are not hidden, so detection is straightforward: `wasKilledByPlayer()` compares the attacker GUID directly against the player's GUID, and `isTargetPlayer()` inspects the target GUID prefix. If both pass, the sound plays immediately.
+| Event | Handler | Purpose |
+|---|---|---|
+| `PLAYER_LOGIN` | `syncTotalKills()` | Baseline kill count once achievement data is loaded |
+| `PLAYER_DEAD` | `handlePlayerDead()` | Reset kill streak on player death |
+| `ZONE_CHANGED_NEW_AREA` | `handleZoneChanged()` + `refreshEventRegistration()` + `syncTotalKills()` | Reset BG tracking, play start-of-match sound, re-evaluate dynamic event registration |
 
-**Arena** — Both GUIDs are `<secret>`, so both functions fall back to heuristics that are not 100% accurate:
-- `isTargetPlayer()`: assumes the target is a player if the GUID is secret and we're in a PvP instance. This is a known imprecision — it will also match totems, pets, etc.
-- `wasKilledByPlayer()`: reads the total killing blow count from achievements/statistics (`GetAchievementCriteriaInfoByID(1487, 0)`, return value position 4 = `quantity`) and compares it against `totalKillsCount`. If the count increased, we assume the player got the KB. Contains a nil guard — returns `false` if either value is nil. If requirements are met, the sound plays based on settings and the current kill streak.
+### Dynamically managed events
+Registered/unregistered based on current zone and enabled features via `refreshEventRegistration()`. This is called at startup, on zone change, and when options are toggled.
 
-Currently, open world and arena killing blow logic share the same code path. The intent is to separate them in the future for cleaner, environment-specific handling.
+| Event | Registered when | Handler |
+|---|---|---|
+| `PARTY_KILL` | `soundModeEnabled` AND (open world OR BG) | `handlePartyKill()` |
+| `UNIT_DIED` | Any of: `soundModeEnabled`, `friendlyDeathModeEnabled`, `enemyDeathModeEnabled` — AND in arena | `handleUnitDeathInArena()` |
+| `UPDATE_BATTLEFIELD_SCORE` | Transiently — registered per BG kill candidate, unregistered immediately on first fire | `handleBattlefieldScoreUpdate()` |
 
-**Battleground** — `handlePartyKill` detects the BG environment and instead of playing sound directly, calls `RequestBattlefieldScoreData()` to refresh the scoreboard, then registers `UPDATE_BATTLEFIELD_SCORE` transiently. When that event fires, `handleBattlefieldScoreUpdate()` compares the current KB count against `previousBGKillingBlows`. If the count increased, the sound plays and the saved count is updated.
+`UNIT_DIED` is spammy — it is only registered when the player is in an arena AND at least one arena feature is enabled. It is unregistered (and `deadUnitsInArena` is wiped) whenever those conditions no longer hold.
 
-### Friendly Death Alert
+`PARTY_KILL` is not registered in arena — arena KB detection goes through `UNIT_DIED` instead.
 
-Tracked via `UNIT_DIED`, which is only registered when the feature is enabled and the player is in an arena. When the event fires, `handleUnitDeathInArena()` calls `getNewlyDeadFriendlyUnit()`, which loops through the player and all party members to find a unit that is dead but not yet marked as such. If found, the unit is marked dead and a random friendly death sound is played.
+---
+
+## Kill Detection Flow by Environment
+
+Detection strategy differs by zone because Blizzard hides GUIDs in instances.
+
+```
+ZONE_CHANGED_NEW_AREA
+  └─ refreshEventRegistration()
+       ├─ Open world / BG  → register PARTY_KILL
+       └─ Arena            → register UNIT_DIED (if any feature enabled)
+```
+
+### Open World
+
+```
+PARTY_KILL (attackerGUID, targetGUID)
+  └─ handlePartyKill()
+       └─ handleOpenWorldPartyKill()
+            ├─ attackerGUID == UnitGUID("player")?  NO → exit
+            ├─ targetGUID matches "^Player%-"?       NO → exit
+            └─ playKillingBlowSound()
+  └─ syncTotalKills()
+```
+
+GUIDs are never secret in open world. Attacker must be the player; target must be a player unit (GUID prefix `Player-`).
+
+### Battleground
+
+```
+PARTY_KILL
+  └─ handlePartyKill()
+       └─ handleBGPartyKill()
+            ├─ achievement delta > 0?  NO → exit (pre-filter to avoid scoreboard spam)
+            ├─ frame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
+            └─ RequestBattlefieldScoreData()
+
+UPDATE_BATTLEFIELD_SCORE  (fires async after scoreboard refresh)
+  └─ handleBattlefieldScoreUpdate()
+       ├─ frame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE)
+       ├─ getBGKillingBlows() > previousBGKillingBlows?
+       │    YES → playKillingBlowSound()
+       └─ update previousBGKillingBlows
+  └─ (no syncTotalKills here — PARTY_KILL already syncs after returning)
+```
+
+GUIDs are `<secret>` in BG. The achievement delta pre-filter avoids hitting the scoreboard API for every teammate kill. The scoreboard delta (`previousBGKillingBlows`) is the authoritative check. `previousBGKillingBlows` is reset to 0 on zone change.
+
+### Arena
+
+Arena does not use `PARTY_KILL` at all. Instead, `UNIT_DIED` drives all arena sound features.
+
+```
+UNIT_DIED
+  └─ handleUnitDeathInArena()
+       ├─ handleFriendlyDeathInArena()
+       │    ├─ friendlyDeathModeEnabled?  NO → exit
+       │    ├─ getNewlyDeadFriendlyUnit()
+       │    │    └─ loops: "player", "party1".."partyN"
+       │    │         uses ArenaUtil.UnitExists() + UnitIsDead() + not deadUnitsInArena[unit]
+       │    ├─ found?  NO → exit
+       │    ├─ markUnitDead(unit)
+       │    └─ dispatchRandomFriendlyDeathSound()
+       │
+       └─ handleEnemyDeathInArena()
+            ├─ getNewlyDeadEnemyUnit()
+            │    └─ loops: "arena1".."arenaN"  (N = GetNumArenaOpponentSpecs())
+            │         uses ArenaUtil.UnitExists() + UnitIsDead() + not deadUnitsInArena[unit]
+            ├─ found?  NO → exit
+            ├─ markUnitDead(unit)
+            ├─ achievement delta > 0 AND soundModeEnabled?
+            │    YES → playKillingBlowSound()  (KB takes priority over enemy death sound)
+            └─ enemyDeathModeEnabled?
+                 YES → dispatchRandomEnemyDeathSound()
+  └─ syncTotalKills()
+```
+
+Both functions share the same `deadUnitsInArena` table (keyed by unit token). Once a unit is marked dead it won't trigger again for the same arena session. The table is wiped on zone change.
+
+**KB priority in arena**: When an enemy dies, the achievement counter is read immediately. If it increased, the player got the KB and `playKillingBlowSound()` fires instead of the enemy death sound. This means `soundModeEnabled` and `enemyDeathModeEnabled` can coexist — KB always wins when earned.
+
+---
+
+## Kill State Machine
+
+Maintained in `HKSounds.lua` module scope:
+
+| Variable | Purpose |
+|---|---|
+| `killStreak` | Total kills since last death or zone change |
+| `multiKill` | Kills within a 5-second window |
+| `killTime` | Timestamp of last kill (for multi-kill window) |
+| `streakTimer` | `C_Timer` handle — delays streak sound when a multi-kill sound also plays |
+
+`updateKillCounters(now)` increments both counters; `resetKillStreak()` zeroes all three on `PLAYER_DEAD` or zone change.
+
+`handleMultiKills()` logic:
+- If `multiKill > 1`: play multi-kill sound immediately on master channel, then schedule streak sound with a 2-second delay (via `C_Timer.NewTimer`)
+- Otherwise: play streak sound immediately
+- If no streak sound exists for the current count (capped at index 10): return early
+
+---
+
+## Achievement Delta — `totalKillsCount`
+
+`totalKillsCount` is a module-level variable tracking the last-known total PvP kill count from `GetAchievementCriteriaInfoByID(1487, 0)` (return position 4 = `quantity`).
+
+`syncTotalKills()` updates it if the new value differs and is non-nil.
+
+**When synced:**
+- `PLAYER_LOGIN` — baseline after achievement data loads
+- `ZONE_CHANGED_NEW_AREA` — keeps baseline current when changing zones
+- After `PARTY_KILL` fires — updates after handling so next event has fresh baseline
+- After `UNIT_DIED` fires — updates after handling so the arena KB check is ready for the next death
+
+**Important**: The achievement counter increments for any kill that grants a KB credit — including pets and totems. This means the delta approach has false positive risk in arena when non-player units die. The `PARTY_KILL` note in the CLAUDE.md about this constraint still applies.
 
 ---
 
 ## Blizzard API Constraints
 
-The `PARTY_KILL` event passes two arguments: `attackerGUID` and `targetGUID`. In any instanced environment — arenas, battlegrounds, dungeons, raids — Blizzard hides **both** of these as `<secret>` values (checked via `issecretvalue()`). This means we can never directly know who landed the killing blow or who died. All kill and target detection logic in this addon exists to work around this limitation.
+The `PARTY_KILL` event passes `attackerGUID` and `targetGUID`. In any instanced environment (arena, BG, dungeon, raid) both are hidden as `<secret>` values (check: `issecretvalue()`).
 
-**Current workarounds:**
-- **Kill detection**: When attacker GUID is secret, infer player kill by comparing total kill count (`GetAchievementCriteriaInfoByID(1487, 0)`) before and after the event. `wasKilledByPlayer()` is a pure predicate — it only reads `totalKillsCount`. The sync (`syncTotalKills()`) happens whenever the player lands a kill — including non-player targets like totems and pets, which also increment the achievement counter. It also syncs on `PLAYER_LOGIN` and `ZONE_CHANGED_NEW_AREA` to keep the baseline accurate.
-- **Target type detection**: When target GUID is secret and we're in a PvP instance, assume the target is a player (since `PARTY_KILL` only fires for players)
+**Workarounds used:**
+- **Open world**: Direct GUID comparison — no workaround needed
+- **BG kill detection**: Scoreboard delta (`GetBattlefieldScore`) — authoritative but async
+- **BG pre-filter**: Achievement delta before hitting `RequestBattlefieldScoreData()`
+- **Arena KB detection**: Achievement delta at time of `UNIT_DIED`
+- **Arena target type**: `ArenaUtil.UnitExists(unitId)` — confirms unit slot is occupied
+- **Arena party size**: `C_WoWLabsMatchmaking.GetPartySize()` for team size
 
 Always check the latest WoW API before implementing anything:
 - **WoW API docs**: https://wowpedia.fandom.com/wiki/World_of_Warcraft_API
@@ -96,22 +233,11 @@ Always check the latest WoW API before implementing anything:
 ## Feature Scope
 
 **In scope:**
-- Sounds on player killing blows (PvP only)
+- Sounds on player killing blows (open world PvP, BG, arena)
 - Friendly death alerts (arena only)
-- Enemy death alerts in arena (upcoming — any enemy death, not just player KB)
+- Enemy death alerts in arena (any enemy death; KB sound takes priority)
 
 **Out of scope:**
 - Ability or cooldown tracking
 - Non-PvP combat events
 - Features outside of arena/BG/open-world PvP
-
----
-
-## Upcoming Feature: Arena Enemy Death Alert
-
-Community-requested. Intended to help healers who don't get killing blows.
-- Trigger: any enemy unit dies in arena (not just when player gets KB)
-- Scope: arena only (mirrors the friendly death alert scope)
-- Stub already exists in `handleUnitDeathInArena()` in `HKSounds.lua`
-- Should respect a new `enemyDeathModeEnabled` DB option (default already added in `HKSoundsDBUtils.lua`)
-- Sound selection: `selectedEnemyDeathSounds` (already in DB defaults)

@@ -16,7 +16,7 @@
 
 🎛 **Customizable Sound Packs**
 
-- Choose between **UT Classic (Male)** and **UT Classic (Female)**.
+- Choose between **UT Classic (Male)**, **UT Classic (Female)**, and **GLaDOS (Portal)**.
 - To change the sound pack, type the slash command: `/hks` or `/hksounds` in chat to open addon options page.
 
 🔊 **Single Sound Mode**
@@ -35,6 +35,13 @@
 
 - Optional sound notifications when a friendly player dies in Arena.
 - Can be enabled/disabled in the addon settings.
+- Community requested feature.
+
+💀 **Enemy Death Sounds (Arena Only)**
+
+- Optional sound notifications when any enemy dies in Arena — not just on your killing blow. Useful for healers and support roles who rarely land the final hit.
+- Killing Blow Sounds always take priority: if you land the KB, the killing blow sound plays instead.
+- Can be enabled/disabled independently in the addon settings.
 - Community requested feature.
 
 🧠 **Blizzard API–friendly:** Designed around modern WoW API limitations.
