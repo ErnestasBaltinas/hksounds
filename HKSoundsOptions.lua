@@ -339,7 +339,7 @@ local function initOptionsFrame()
 
     local enemyDeathHeader = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     enemyDeathHeader:SetPoint("TOPLEFT", 15, -375)
-    enemyDeathHeader:SetText("|cFF808080Enemy Death Sounds (Arena Only)|r |cFFFF0000coming soon...|r")
+    enemyDeathHeader:SetText("Enemy Death Sounds (Arena Only)")
 
     CreateInfoIcon(optionsFrame, enemyDeathHeader,
         "Enemy Death Alert (Community asked feature)",
@@ -354,10 +354,9 @@ local function initOptionsFrame()
 
     local toggleEnemyDeathFramesFn = nil -- defined later, used to enable frames after loading saved options
 
-    local enemyDeathCheckbox = CreateFrame("CheckButton", nil, optionsFrame, "UICheckButtonTemplate")
+    local enemyDeathCheckbox = CreateFrame("CheckButton", nil, optionsFrame, "MinimalCheckboxTemplate")
     enemyDeathCheckbox:SetPoint("TOPLEFT", enemyDeathHeader, "BOTTOMLEFT", 0, -15)
-    --enemyDeathCheckbox:SetChecked(DBUtils.getOptionValue('enemyDeathModeEnabled'))
-    enemyDeathCheckbox:SetChecked(false) -- force false, feature is disabled for now
+    enemyDeathCheckbox:SetChecked(DBUtils.getOptionValue('enemyDeathModeEnabled'))
     enemyDeathCheckbox:SetScript("OnClick", function(self)
         DBUtils.setOptionValue('enemyDeathModeEnabled', self:GetChecked())
 
@@ -365,9 +364,6 @@ local function initOptionsFrame()
             toggleEnemyDeathFramesFn()
         end
     end)
-
-    -- force false, feature is disabled for now
-    enemyDeathCheckbox:Disable()
 
     -- Create a container frame for Enemy Death Sound controls
     local enemyDeathModeContainer = CreateFrame("Frame", nil, optionsFrame)

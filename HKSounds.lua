@@ -42,7 +42,10 @@ local function getCurrentTotalKills()
 end
 
 local function syncTotalKills()
-    totalKillsCount = getCurrentTotalKills()
+    local current = getCurrentTotalKills()
+    if current ~= nil and current ~= totalKillsCount then
+        totalKillsCount = current
+    end
 end
 
 local function isInPvPInstance()
@@ -259,7 +262,13 @@ local function playKillingBlowSound()
 end
 
 -- ========= EVENT DOMAIN HANDLERS =========
+-- KB detection varies by environment due to Blizzard hiding GUIDs in instances:
+--   Open world  : PARTY_KILL → GUID match        → play sound
+--   Battleground: PARTY_KILL → scoreboard delta   → play sound  (async via UPDATE_BATTLEFIELD_SCORE)
+--   Arena       : UNIT_DIED  → achievement delta  → play sound
 local function handlePartyKill(attackerGUID, targetGUID)
+    if isInArena() then return end -- arena handled by UNIT_DIED
+
     if not DBUtils.getOptionValue('soundModeEnabled') then
         return
     end
@@ -270,10 +279,6 @@ local function handlePartyKill(attackerGUID, targetGUID)
     if not killedByPlayer then
         return
     end
-
-    -- Always sync baseline when player landed the kill, even for non-player targets.
-    -- Totem/pet kills count toward the achievement and would skew future detection if not tracked.
-    syncTotalKills()
 
     if not isTargetPlayer(targetGUID) then
         return
@@ -299,35 +304,31 @@ local function handleBattlefieldScoreUpdate(self)
 end
 
 local function handleUnitDeathInArena()
+    -- Friendly death detection
     if DBUtils.getOptionValue('friendlyDeathModeEnabled') then
         local partyUnitDead = getNewlyDeadFriendlyUnit()
-
         if partyUnitDead then
             markUnitDead(partyUnitDead)
             dispatchRandomFriendlyDeathSound(true)
         end
     end
 
-    -- pseudo code for the next feature
-    -- local arenaUnitDead = "arena1" --unit or nil
-    -- if arenaUnitDead then
-    --     local playerGotKB = true   -- true/false
+    -- Arena kill detection: always detect and bookkeep, regardless of settings
+    local enemyUnitDead = getNewlyDeadEnemyUnit()
+    local current = getCurrentTotalKills()
+    local playerGotKill = current ~= nil and totalKillsCount ~= nil and current > totalKillsCount
 
-    --     if playerGotKB then
-    --         playKillingBlowSound()
-    --     else
-    --         local enemyDeathEnabled = true -- true/false
-    --         if enemyDeathEnabled then
-    --             -- play enemy death sound
-    --         end
-    --     end
+    if enemyUnitDead then markUnitDead(enemyUnitDead) end
 
-    --     return
-    -- end
-end
+    -- Killing blow sound: player got the KB
+    if enemyUnitDead and playerGotKill and DBUtils.getOptionValue('soundModeEnabled') then
+        playKillingBlowSound()
+    end
 
-local function handlePlayerLogin()
-    syncTotalKills()
+    -- Enemy death sound: enemy died but player did not get the KB
+    if enemyUnitDead and not playerGotKill and DBUtils.getOptionValue('enemyDeathModeEnabled') then
+        dispatchRandomEnemyDeathSound(true)
+    end
 end
 
 local function handlePlayerDead()
@@ -336,7 +337,6 @@ end
 
 local function handleZoneChanged()
     resetBGKillTracking()
-    syncTotalKills()
 
     if isInPvPInstance() then
         local soundMode = DBUtils.getOptionValue('selectedSoundMode');
@@ -358,19 +358,22 @@ local function managePartyKillEvent(self)
 end
 
 local function manageUnitDiedEvent(self)
-    if not DBUtils.getOptionValue('friendlyDeathModeEnabled') then
+    local anyFeatureEnabled = DBUtils.getOptionValue('soundModeEnabled')
+        or DBUtils.getOptionValue('friendlyDeathModeEnabled')
+        or DBUtils.getOptionValue('enemyDeathModeEnabled')
+
+    if not anyFeatureEnabled then
         if self:IsEventRegistered(UNIT_DIED) then
-            self:UnregisterEvent(UNIT_DIED) -- spammy event, Unregister when we dont want to track it
+            self:UnregisterEvent(UNIT_DIED) -- spammy event, unregister when we dont want to track it
             wipe(deadUnitsInArena)
         end
-
         return
     end
 
     if isInArena() then
         self:RegisterEvent(UNIT_DIED)
     else
-        self:UnregisterEvent(UNIT_DIED) -- spammy event, Unregister when we dont want to track it
+        self:UnregisterEvent(UNIT_DIED) -- spammy event, unregister when we dont want to track it
         wipe(deadUnitsInArena)
     end
 end
@@ -379,16 +382,19 @@ end
 local function eventHandler(self, event, ...)
     if event == PARTY_KILL then
         handlePartyKill(...)
+        syncTotalKills()
     elseif event == TRACKED_EVENTS.PLAYER_LOGIN then
-        handlePlayerLogin()
+        syncTotalKills()
     elseif event == TRACKED_EVENTS.PLAYER_DEAD then
         handlePlayerDead()
     elseif event == TRACKED_EVENTS.ZONE_CHANGED_NEW_AREA then
         handleZoneChanged()
         managePartyKillEvent(self)
         manageUnitDiedEvent(self)
+        syncTotalKills()
     elseif event == UNIT_DIED then
         handleUnitDeathInArena()
+        syncTotalKills()
     elseif event == UPDATE_BATTLEFIELD_SCORE then
         handleBattlefieldScoreUpdate(self)
     end
