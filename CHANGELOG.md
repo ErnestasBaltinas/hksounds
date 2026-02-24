@@ -1,9 +1,14 @@
-## HK Sounds release 4.2.0
+## HK Sounds release 4.3.0
 
 ### Changes
 
 - Added Enemy Death Sounds for Arena — plays a configurable sound when any enemy dies, not just on your killing blow. Killing Blow Sounds always take priority.
 - Improved arena kill detection reliability.
+
+## HK Sounds release 4.2.0
+
+### Changes
+
 - Various bug fixes and kill detection improvements.
 
 ## HK Sounds release 4.1.0
