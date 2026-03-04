@@ -83,7 +83,7 @@ Registered on `lifecycleFrame` unconditionally at startup:
 |---|---|---|
 | `PLAYER_LOGIN` | `syncTotalKills()` | Baseline kill count once achievement data is loaded |
 | `PLAYER_DEAD` | `handlePlayerDead()` | Reset kill streak on player death |
-| `ZONE_CHANGED_NEW_AREA` | `handleZoneChanged()` + `refreshKillEventRegistration()` + `syncTotalKills()` | Reset BG tracking, play start-of-match sound, re-evaluate dynamic event registration |
+| `ZONE_CHANGED_NEW_AREA` | `handleZoneChanged()` + `refreshKillEventRegistration()` + `syncTotalKills()` | Reset kill streak, play start-of-match sound, re-evaluate dynamic event registration |
 
 ### Dynamically managed events
 Registered/unregistered on `killFrame` based on current zone and enabled features via `refreshKillEventRegistration()`. This is called at startup, on zone change, and when options are toggled.
@@ -92,7 +92,6 @@ Registered/unregistered on `killFrame` based on current zone and enabled feature
 |---|---|---|
 | `PARTY_KILL` | `soundModeEnabled` AND (open world OR BG) | `handlePartyKill()` |
 | `UNIT_DIED` | Any of: `soundModeEnabled`, `friendlyDeathModeEnabled`, `enemyDeathModeEnabled` — AND in arena | `handleUnitDeathInArena()` |
-| `UPDATE_BATTLEFIELD_SCORE` | Transiently — registered per BG kill candidate, unregistered immediately on first fire | `handleBattlefieldScoreUpdate()` |
 
 `UNIT_DIED` is spammy — it is only registered when the player is in an arena AND at least one arena feature is enabled. It is unregistered (and `deadUnitsInArena` is wiped) whenever those conditions no longer hold.
 
@@ -128,23 +127,20 @@ GUIDs are never secret in open world. Attacker must be the player; target must b
 ### Battleground
 
 ```
-PARTY_KILL
+PARTY_KILL (attackerGUID, targetGUID)
   └─ handlePartyKill()
        └─ handleBGPartyKill()
-            ├─ achievement delta > 0?  NO → exit (pre-filter to avoid scoreboard spam)
-            ├─ killFrame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
-            └─ RequestBattlefieldScoreData()
-
-UPDATE_BATTLEFIELD_SCORE  (fires async after scoreboard refresh)
-  └─ handleBattlefieldScoreUpdate()
-       ├─ killFrame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE)
-       ├─ getBGKillingBlows() > previousBGKillingBlows?
-       │    YES → playKillingBlowSound()
-       └─ update previousBGKillingBlows
-  └─ (no syncTotalKills here — PARTY_KILL already syncs after returning)
+            ├─ issecretvalue(attackerGUID)?
+            │    YES → achievement delta > 0?  NO → exit
+            │    NO  → attackerGUID == UnitGUID("player")?  NO → exit
+            ├─ issecretvalue(targetGUID)?
+            │    YES → pass through (assume player; pets/totems accepted)
+            │    NO  → targetGUID matches "^Player%-"?  NO → exit
+            └─ playKillingBlowSound()
+  └─ syncTotalKills()
 ```
 
-GUIDs are `<secret>` in BG. The achievement delta pre-filter avoids hitting the scoreboard API for every teammate kill. The scoreboard delta (`previousBGKillingBlows`) is the authoritative check. `previousBGKillingBlows` is reset to 0 on zone change.
+GUIDs from `PARTY_KILL` are `<secret>` in BG. `attackerGUID` and `targetGUID` are checked via `issecretvalue()` to determine the right strategy for each. When the attacker GUID is secret, achievement delta is used to confirm the player got the kill. When the target GUID is secret, it is assumed to be a player (false positives from pets/totems are accepted). When either is not secret, direct comparison/prefix checks are used as in open world.
 
 ### Arena
 
@@ -223,11 +219,13 @@ The `PARTY_KILL` event passes `attackerGUID` and `targetGUID`. In any instanced 
 
 **Workarounds used:**
 - **Open world**: Direct GUID comparison — no workaround needed
-- **BG kill detection**: Scoreboard delta (`GetBattlefieldScore`) — authoritative but async
-- **BG pre-filter**: Achievement delta before hitting `RequestBattlefieldScoreData()`
+- **BG attacker detection**: `issecretvalue(attackerGUID)` — if secret, use achievement delta to confirm the player got the kill; if not secret, fall back to direct GUID comparison
+- **BG target detection**: `issecretvalue(targetGUID)` — if secret, assume player target; if not secret, check `Player-` prefix
 - **Arena KB detection**: Achievement delta at time of `UNIT_DIED`
 - **Arena target type**: `ArenaUtil.UnitExists(unitId)` — confirms unit slot is occupied
 - **Arena party size**: `C_WoWLabsMatchmaking.GetPartySize()` for team size
+
+**Note**: `GetBattlefieldScore()` previously returned player names as plain strings, allowing scoreboard-based BG kill detection. It now returns secret string values, making name comparisons throw taint errors. The scoreboard approach is preserved in commented legacy code in `HKSounds.lua`.
 
 Always check the latest WoW API before implementing anything:
 - **WoW API docs**: https://wowpedia.fandom.com/wiki/World_of_Warcraft_API

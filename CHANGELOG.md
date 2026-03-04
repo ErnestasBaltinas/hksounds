@@ -1,3 +1,9 @@
+## HK Sounds release 4.4.0
+
+### Changes
+
+- Fixed an error and broken kill detection in Battlegrounds caused by a Blizzard API change.
+
 ## HK Sounds release 4.3.0
 
 ### Changes

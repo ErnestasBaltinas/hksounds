@@ -16,14 +16,14 @@ local LIFECYCLE_EVENTS = {
     PLAYER_DEAD = "PLAYER_DEAD",
     PLAYER_LOGIN = "PLAYER_LOGIN"
 }
-local PARTY_KILL = "PARTY_KILL"                             -- tracked separately basedon the enabled flag
-local UNIT_DIED = "UNIT_DIED"                               -- tracked separately when in arenas
-local UPDATE_BATTLEFIELD_SCORE = "UPDATE_BATTLEFIELD_SCORE" -- registered transiently in BGs
+local PARTY_KILL = "PARTY_KILL" -- tracked separately based on the enabled flag
+local UNIT_DIED = "UNIT_DIED"   -- tracked separately when in arenas
+-- local UPDATE_BATTLEFIELD_SCORE = "UPDATE_BATTLEFIELD_SCORE" -- [LEGACY] registered transiently in BGs (scoreboard approach)
 
 -- ========= STATE =========
 local lifecycleFrame
 local killFrame
-local previousBGKillingBlows = 0 -- rolling BG KB count; updated each time score data arrives
+-- local previousBGKillingBlows = 0 -- [LEGACY] rolling BG KB count; updated each time score data arrives (scoreboard approach)
 
 local totalKillsCount = 0
 local killStreak = 0
@@ -58,7 +58,9 @@ local function isInOpenWorld()
     return instanceType == "none"
 end
 
-local function getBGKillingBlows()
+-- [LEGACY] GetBattlefieldScore() now returns secret string values for player names in BG.
+-- Comparing name == playerName throws a taint error. Re-enable if Blizzard reverts this.
+--[[ local function getBGKillingBlows()
     local playerName = UnitName("player")
     local numScores = GetNumBattlefieldScores()
     for i = 1, numScores do
@@ -68,7 +70,7 @@ local function getBGKillingBlows()
         end
     end
     return nil
-end
+end --]]
 
 local function isInBattleground()
     local _, instanceType = IsInInstance()
@@ -80,10 +82,11 @@ local function isInArena()
     return inInstance and instanceType == "arena"
 end
 
-local function resetBGKillTracking()
+-- [LEGACY] used by the scoreboard approach; kept for reference.
+--[[ local function resetBGKillTracking()
     previousBGKillingBlows = 0
     killFrame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE) -- safe no-op if not registered
-end
+end --]]
 
 
 -- ========= KILL STATE MACHINE =========
@@ -232,9 +235,9 @@ end
 
 -- ========= EVENT DOMAIN HANDLERS =========
 -- KB detection varies by environment due to Blizzard hiding GUIDs in instances:
---   Open world  : PARTY_KILL → GUID match        → play sound
---   Battleground: PARTY_KILL → scoreboard delta   → play sound  (async via UPDATE_BATTLEFIELD_SCORE)
---   Arena       : UNIT_DIED  → achievement delta  → play sound
+--   Open world  : PARTY_KILL → GUID match + Player- prefix    → play sound
+--   Battleground: PARTY_KILL → GUID match + issecretvalue()   → play sound
+--   Arena       : UNIT_DIED  → achievement delta              → play sound
 
 -- Open world: GUIDs are never hidden, so we match directly.
 local function handleOpenWorldPartyKill(attackerGUID, targetGUID)
@@ -243,10 +246,10 @@ local function handleOpenWorldPartyKill(attackerGUID, targetGUID)
     playKillingBlowSound()
 end
 
--- BG: GUIDs are always <secret>. Use achievement delta as a pre-filter to avoid
--- calling RequestBattlefieldScoreData() for every party member kill; the scoreboard
--- delta in handleBattlefieldScoreUpdate is the authoritative check.
-local function handleBGPartyKill()
+-- [LEGACY] BG scoreboard approach — disabled because GetBattlefieldScore() now returns secret
+-- string values for player names, making name comparisons throw taint errors.
+-- Re-enable if Blizzard reverts this.
+--[[ local function handleBGPartyKill()
     local current = getCurrentTotalKills()
     if current == nil or totalKillsCount == nil then return end
     if current <= totalKillsCount then return end
@@ -254,18 +257,39 @@ local function handleBGPartyKill()
     killFrame:RegisterEvent(UPDATE_BATTLEFIELD_SCORE)
     RequestBattlefieldScoreData()
 end
+--]]
+
+-- BG: GUIDs may be secret in instances.
+-- Attacker: if secret, use achievement delta to confirm the player got the kill;
+--           if not secret, fall back to direct GUID comparison.
+-- Target: if secret, assume player (may include pets/totems — acceptable);
+--         if not secret, check the Player- prefix as in open world.
+local function handleBGPartyKill(attackerGUID, targetGUID)
+    if issecretvalue(attackerGUID) then
+        local current = getCurrentTotalKills()
+        if current == nil or current <= totalKillsCount then return end
+    else
+        if attackerGUID ~= UnitGUID("player") then return end
+    end
+
+    if not issecretvalue(targetGUID) then
+        if type(targetGUID) ~= "string" or targetGUID:match("^Player%-") == nil then return end
+    end
+
+    playKillingBlowSound()
+end
 
 -- Handles open world and BG only. Arena KB detection uses UNIT_DIED instead.
 local function handlePartyKill(attackerGUID, targetGUID)
     if not DBUtils.getOptionValue('soundModeEnabled') then return end
 
     if isInBattleground() then
-        handleBGPartyKill()
+        handleBGPartyKill(attackerGUID, targetGUID)
     else
         handleOpenWorldPartyKill(attackerGUID, targetGUID)
     end
 end
-
+--[[ LEGACY
 local function handleBattlefieldScoreUpdate()
     killFrame:UnregisterEvent(UPDATE_BATTLEFIELD_SCORE)
 
@@ -275,7 +299,7 @@ local function handleBattlefieldScoreUpdate()
     end
 
     previousBGKillingBlows = currentKBs or previousBGKillingBlows
-end
+end --]]
 
 local function handleFriendlyDeathInArena()
     if not DBUtils.getOptionValue('friendlyDeathModeEnabled') then return end
@@ -314,7 +338,7 @@ local function handlePlayerDead()
 end
 
 local function handleZoneChanged()
-    resetBGKillTracking()
+    -- resetBGKillTracking() -- [LEGACY] scoreboard approach; re-enable if reverted
 
     if isInPvPInstance() then
         local soundMode = DBUtils.getOptionValue('selectedSoundMode');
@@ -384,8 +408,8 @@ local function killHandler(self, event, ...)
     elseif event == UNIT_DIED then
         handleUnitDeathInArena()
         syncTotalKills()
-    elseif event == UPDATE_BATTLEFIELD_SCORE then
-        handleBattlefieldScoreUpdate()
+    -- elseif event == UPDATE_BATTLEFIELD_SCORE then -- [LEGACY] scoreboard approach; re-enable if reverted
+    --     handleBattlefieldScoreUpdate()
     end
 end
 
