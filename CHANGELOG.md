@@ -1,3 +1,9 @@
+## HK Sounds release 4.5.1
+
+### Changes
+
+- Updated interface version for compatibility with the latest game build.
+
 ## HK Sounds release 4.5.0
 
 ### Changes
